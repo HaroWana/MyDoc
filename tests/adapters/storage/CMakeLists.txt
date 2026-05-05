@@ -1,0 +1,4 @@
+add_executable(tests_adapters_storage_migrations test_migrations.cpp)
+target_link_libraries(tests_adapters_storage_migrations
+    PRIVATE mondoc_adapters_storage Catch2::Catch2WithMain)
+add_test(NAME storage.migrations COMMAND tests_adapters_storage_migrations)
