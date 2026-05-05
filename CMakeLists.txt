@@ -30,7 +30,7 @@ if(NOT MONDOC_HAVE_STD_EXPECTED)
 endif()
 
 # Subdirectories (added by later plans):
-# add_subdirectory(src/domain)             # Plan 02
+add_subdirectory(src/domain)
 # add_subdirectory(src/adapters/storage)   # Plan 03
 # add_subdirectory(src/app)                # Plan 04
 
