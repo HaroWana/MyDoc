@@ -32,7 +32,7 @@ endif()
 # Subdirectories (added by later plans):
 add_subdirectory(src/domain)
 add_subdirectory(src/adapters/storage)
-# add_subdirectory(src/app)                # Plan 04
+add_subdirectory(src/app)
 
 enable_testing()
 add_subdirectory(tests)
