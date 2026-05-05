@@ -1,0 +1,35 @@
+# Planning artifacts (project rule: never commit .planning/)
+.planning/
+
+# Build outputs
+build/
+build-*/
+out/
+
+# vcpkg
+vcpkg_installed/
+.vcpkg-root
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+CMakeUserPresets.json
+*.swp
+.DS_Store
+
+# CMake intermediate
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Compiled object files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.exe
+*.dylib
