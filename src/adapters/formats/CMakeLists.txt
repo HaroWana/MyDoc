@@ -1,5 +1,6 @@
 add_library(mondoc_adapters_formats STATIC
     placeholder.cpp
+    docx_document_reader.cpp
 )
 
 target_include_directories(mondoc_adapters_formats PUBLIC
