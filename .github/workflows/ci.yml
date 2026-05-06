@@ -5,11 +5,103 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  QT_VERSION: '6.8.0'
+
 jobs:
-  placeholder:
-    name: Wave 1 stub — full matrix lands in Plan 05
-    runs-on: ubuntu-24.04
+  build:
+    name: ${{ matrix.preset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, preset: linux-gcc,    qt-arch: linux_gcc_64 }
+          - { os: ubuntu-24.04, preset: linux-clang,  qt-arch: linux_gcc_64 }
+          - { os: windows-2022, preset: windows-msvc, qt-arch: win64_msvc2022_64 }
+
     steps:
       - uses: actions/checkout@v4
-      - name: Announce
-        run: echo "Phase 0 Plan 01 wired CI placeholder; full matrix delivered in Plan 05."
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev \
+              libfontconfig1-dev libxcb-xkb-dev libxcb-cursor-dev
+          if [ "${{ matrix.preset }}" = "linux-clang" ]; then
+            sudo apt-get install -y clang-18
+            echo "CC=clang-18"   >> $GITHUB_ENV
+            echo "CXX=clang++-18" >> $GITHUB_ENV
+          fi
+
+      - name: Setup MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt-arch }}
+          modules: 'qtbase'
+          cache: true
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Qt-isolation grep guard (domain layer must not include <Q*>)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if grep -rn '#include[[:space:]]*<Q' src/domain/; then
+            echo "::error::Qt header included in src/domain/ — domain layer must remain Qt-free."
+            exit 1
+          fi
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+
+      - name: Smoke launch (Linux, APP-05 < 2000 ms)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          start_ns=$(date +%s%N)
+          ./build/${{ matrix.preset }}/src/app/mondoc
+          rc=$?
+          end_ns=$(date +%s%N)
+          elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
+          echo "Launch+exit took ${elapsed_ms} ms (exit code ${rc})"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::Binary exited non-zero (code $rc)"
+            exit 1
+          fi
+          if [ "$elapsed_ms" -ge 2000 ]; then
+            echo "::error::APP-05 violated: ${elapsed_ms} ms >= 2000 ms"
+            exit 1
+          fi
+
+      - name: Smoke launch (Windows, APP-05 < 2000 ms)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sw = [System.Diagnostics.Stopwatch]::StartNew()
+          & .\build\${{ matrix.preset }}\src\app\Debug\mondoc.exe
+          $rc = $LASTEXITCODE
+          $sw.Stop()
+          Write-Host "Launch+exit took $($sw.ElapsedMilliseconds) ms (exit code $rc)"
+          if ($rc -ne 0) {
+            Write-Host "::error::Binary exited non-zero (code $rc)"
+            exit 1
+          }
+          if ($sw.ElapsedMilliseconds -ge 2000) {
+            Write-Host "::error::APP-05 violated: $($sw.ElapsedMilliseconds) ms >= 2000 ms"
+            exit 1
+          }
