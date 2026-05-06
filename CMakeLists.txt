@@ -29,9 +29,16 @@ if(NOT MONDOC_HAVE_STD_EXPECTED)
     find_package(tl-expected CONFIG REQUIRED)
 endif()
 
+find_package(libzip CONFIG REQUIRED)
+find_package(pugixml CONFIG REQUIRED)
+find_package(stduuid CONFIG REQUIRED)
+
 # Subdirectories (added by later plans):
 add_subdirectory(src/domain)
 add_subdirectory(src/adapters/storage)
+add_subdirectory(src/adapters/formats)
+add_subdirectory(src/services)
+add_subdirectory(src/ui)
 add_subdirectory(src/app)
 
 enable_testing()

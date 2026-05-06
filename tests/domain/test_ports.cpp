@@ -34,6 +34,9 @@ public:
     std::expected<std::vector<Template>, mondoc::Error> listAll() override {
         return std::vector<Template>{};
     }
+    mondoc::expected<void, mondoc::Error> remove(const TemplateId&) override {
+        return {};
+    }
 };
 
 }  // namespace

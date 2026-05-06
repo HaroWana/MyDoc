@@ -31,8 +31,20 @@ CREATE TABLE IF NOT EXISTS templates (
 );
 )SQL";
 
-constexpr std::array<Migration, 1> kMigrations{
+constexpr std::string_view kV2Sql = R"SQL(
+CREATE TABLE IF NOT EXISTS template_fields (
+    id          TEXT NOT NULL,
+    template_id TEXT NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    type        TEXT NOT NULL,
+    order_idx   INTEGER NOT NULL,
+    PRIMARY KEY (id)
+);
+)SQL";
+
+constexpr std::array<Migration, 2> kMigrations{
     Migration{1, kV1Sql},
+    Migration{2, kV2Sql},
 };
 
 std::int64_t unixNowSeconds() noexcept {
