@@ -6,7 +6,7 @@
 
 #include "domain/template.hpp"
 #include "mondoc/id.hpp"
-#include "services/template_service.hpp"
+#include "template_service.hpp"
 
 class QListWidget;
 class QStackedWidget;
