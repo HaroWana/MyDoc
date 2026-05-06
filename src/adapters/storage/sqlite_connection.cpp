@@ -19,7 +19,7 @@ std::string pathToUtf8(const std::filesystem::path& p) {
 
 }  // namespace
 
-std::expected<SqliteConnection, mondoc::Error>
+mondoc::expected<SqliteConnection, mondoc::Error>
 SqliteConnection::open(const std::filesystem::path& dbPath) {
     try {
         auto db = std::make_unique<SQLite::Database>(
@@ -36,7 +36,7 @@ SqliteConnection::open(const std::filesystem::path& dbPath) {
 
         return SqliteConnection(std::move(db));
     } catch (const SQLite::Exception& e) {
-        return std::unexpected(mondoc::Error::storageOpen(e.what()));
+        return mondoc::unexpected(mondoc::Error::storageOpen(e.what()));
     }
 }
 

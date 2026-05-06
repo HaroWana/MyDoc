@@ -12,7 +12,7 @@ namespace mondoc::adapters::storage {
 
 class SqliteConnection {
 public:
-    static std::expected<SqliteConnection, mondoc::Error>
+    static mondoc::expected<SqliteConnection, mondoc::Error>
     open(const std::filesystem::path& dbPath);
 
     SQLite::Database& raw() noexcept { return *db_; }

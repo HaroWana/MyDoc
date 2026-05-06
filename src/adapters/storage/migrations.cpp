@@ -46,7 +46,7 @@ std::span<const Migration> registeredMigrations() noexcept {
     return std::span<const Migration>(kMigrations.data(), kMigrations.size());
 }
 
-std::expected<int, mondoc::Error> runMigrations(SqliteConnection& conn) {
+mondoc::expected<int, mondoc::Error> runMigrations(SqliteConnection& conn) {
     auto& db = conn.raw();
 
     int currentVersion = 0;
@@ -56,7 +56,7 @@ std::expected<int, mondoc::Error> runMigrations(SqliteConnection& conn) {
             currentVersion = q.getColumn(0).getInt();
         }
     } catch (const SQLite::Exception& e) {
-        return std::unexpected(mondoc::Error::migration(
+        return mondoc::unexpected(mondoc::Error::migration(
             std::string{"read user_version: "} + e.what()));
     }
 
@@ -73,11 +73,11 @@ std::expected<int, mondoc::Error> runMigrations(SqliteConnection& conn) {
             insert.bind(1, m.version);
             insert.bind(2, static_cast<long long>(unixNowSeconds()));
             insert.exec();
-            db.exec("PRAGMA user_version = " + std::to_string(m.version) + ";");
             tx.commit();
+            db.exec("PRAGMA user_version = " + std::to_string(m.version) + ";");
             currentVersion = m.version;
         } catch (const SQLite::Exception& e) {
-            return std::unexpected(mondoc::Error::migration(
+            return mondoc::unexpected(mondoc::Error::migration(
                 "v" + std::to_string(m.version) + ": " + e.what()));
         }
     }

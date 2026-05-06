@@ -9,7 +9,7 @@ namespace mondoc::domain {
 class IDocumentReader {
 public:
     virtual ~IDocumentReader() = default;
-    virtual std::expected<Template, mondoc::Error>
+    virtual mondoc::expected<Template, mondoc::Error>
         read(const std::filesystem::path& path) = 0;
 };
 
