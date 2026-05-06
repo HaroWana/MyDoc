@@ -1,0 +1,4 @@
+add_executable(tests_services_template_service test_template_service.cpp)
+target_link_libraries(tests_services_template_service
+    PRIVATE mondoc_services mondoc_adapters_storage Catch2::Catch2WithMain)
+add_test(NAME services.template_service COMMAND tests_services_template_service)

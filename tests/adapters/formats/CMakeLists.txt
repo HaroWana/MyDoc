@@ -1,0 +1,9 @@
+add_executable(tests_adapters_formats_docx test_docx_reader.cpp)
+target_link_libraries(tests_adapters_formats_docx
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.docx COMMAND tests_adapters_formats_docx)
+
+add_executable(tests_adapters_formats_plain_text test_plain_text_reader.cpp)
+target_link_libraries(tests_adapters_formats_plain_text
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.plain_text COMMAND tests_adapters_formats_plain_text)
