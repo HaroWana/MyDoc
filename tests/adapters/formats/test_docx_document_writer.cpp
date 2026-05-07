@@ -1,11 +1,252 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <pugixml.hpp>
+#include <zip.h>
+
 #include "docx_document_writer.hpp"
+#include "domain/fill.hpp"
+#include "domain/template.hpp"
+
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <random>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using mondoc::adapters::formats::DocxDocumentWriter;
+using mondoc::domain::Field;
+using mondoc::domain::FieldType;
+using mondoc::domain::Fill;
+using mondoc::domain::Template;
 
-TEST_CASE("DocxDocumentWriter: write returns error placeholder (Plan 02)",
-          "[formats.docx_writer][!shouldfail]") {
-    DocxDocumentWriter w;
-    REQUIRE(false);
+namespace {
+
+constexpr std::string_view kContentTypesXml = R"XML(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>
+)XML";
+
+constexpr std::string_view kRootRelsXml = R"XML(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>
+)XML";
+
+std::filesystem::path uniqueTempPath(std::string_view label) {
+    static std::mt19937_64 rng{std::random_device{}()};
+    auto suffix = std::to_string(rng());
+    auto path = std::filesystem::temp_directory_path()
+                / (std::string{"mondoc_writer_"} + std::string{label} + "_" + suffix + ".docx");
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+    return path;
+}
+
+void writeMinimalDocx(const std::filesystem::path& path,
+                      std::string_view documentXml) {
+    int err = 0;
+    zip_t* zf = zip_open(path.string().c_str(),
+                         ZIP_CREATE | ZIP_TRUNCATE, &err);
+    REQUIRE(zf != nullptr);
+
+    auto addEntry = [&](const char* name, std::string_view body) {
+        zip_source_t* src = zip_source_buffer(zf, body.data(), body.size(), 0);
+        REQUIRE(src != nullptr);
+        REQUIRE(zip_file_add(zf, name, src, ZIP_FL_OVERWRITE) >= 0);
+    };
+
+    addEntry("[Content_Types].xml", kContentTypesXml);
+    addEntry("_rels/.rels",         kRootRelsXml);
+    addEntry("word/document.xml",   documentXml);
+
+    REQUIRE(zip_close(zf) == 0);
+}
+
+std::vector<unsigned char> readAllBytes(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    REQUIRE(in.good());
+    return std::vector<unsigned char>{std::istreambuf_iterator<char>{in},
+                                      std::istreambuf_iterator<char>{}};
+}
+
+uint64_t fnv1a(const std::vector<unsigned char>& bytes) {
+    uint64_t h = 1469598103934665603ULL;
+    for (auto b : bytes) {
+        h ^= b;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+std::string readDocumentXmlFrom(const std::filesystem::path& path) {
+    int err = 0;
+    zip_t* zf = zip_open(path.string().c_str(), ZIP_RDONLY, &err);
+    REQUIRE(zf != nullptr);
+    zip_stat_t st;
+    zip_stat_init(&st);
+    REQUIRE(zip_stat(zf, "word/document.xml", 0, &st) == 0);
+    zip_file_t* entry = zip_fopen(zf, "word/document.xml", 0);
+    REQUIRE(entry != nullptr);
+    std::string xml;
+    xml.resize(static_cast<std::size_t>(st.size));
+    REQUIRE(zip_fread(entry, xml.data(), st.size) == static_cast<zip_int64_t>(st.size));
+    zip_fclose(entry);
+    zip_discard(zf);
+    return xml;
+}
+
+struct TempFile {
+    std::filesystem::path path;
+    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
+    ~TempFile() {
+        std::error_code ec;
+        std::filesystem::remove(path, ec);
+    }
+};
+
+}  // namespace
+
+TEST_CASE("DocxDocumentWriter: original template is byte-identical after a successful write",
+          "[formats.docx_writer]") {
+    TempFile templateFile{uniqueTempPath("tpl")};
+    TempFile destFile{uniqueTempPath("out")};
+
+    constexpr std::string_view xml = R"XML(<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body><w:p><w:r><w:t>Hello {{name}}</w:t></w:r></w:p></w:body>
+</w:document>)XML";
+    writeMinimalDocx(templateFile.path, xml);
+
+    const auto preBytes = readAllBytes(templateFile.path);
+    const auto preHash  = fnv1a(preBytes);
+
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"t1"};
+    tpl.name_          = "tpl";
+    tpl.source_format_ = "docx";
+    tpl.source_path_   = templateFile.path;
+    Field f;
+    f.id_ = mondoc::FieldId{"f1"};
+    f.name_ = "name";
+    f.type_ = FieldType::Text;
+    tpl.fields_.push_back(f);
+
+    std::vector<Fill> fills;
+    Fill fill;
+    fill.field_id_      = mondoc::FieldId{"f1"};
+    fill.current_value_ = "World";
+    fills.push_back(fill);
+
+    auto result = DocxDocumentWriter{}.write(tpl, fills, destFile.path);
+    REQUIRE(result.has_value());
+
+    const auto postBytes = readAllBytes(templateFile.path);
+    const auto postHash  = fnv1a(postBytes);
+    REQUIRE(postHash == preHash);
+    REQUIRE(postBytes.size() == preBytes.size());
+}
+
+TEST_CASE("DocxDocumentWriter: <w:sdt> content control receives fill value",
+          "[formats.docx_writer]") {
+    TempFile templateFile{uniqueTempPath("tpl")};
+    TempFile destFile{uniqueTempPath("out")};
+
+    constexpr std::string_view xml = R"XML(<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:sdt><w:sdtPr><w:alias w:val="customer_name"/></w:sdtPr><w:sdtContent><w:r><w:t>placeholder</w:t></w:r></w:sdtContent></w:sdt></w:p></w:body></w:document>)XML";
+    writeMinimalDocx(templateFile.path, xml);
+
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"t1"};
+    tpl.name_          = "tpl";
+    tpl.source_format_ = "docx";
+    tpl.source_path_   = templateFile.path;
+    Field f;
+    f.id_   = mondoc::FieldId{"f1"};
+    f.name_ = "customer_name";
+    f.type_ = FieldType::Text;
+    tpl.fields_.push_back(f);
+
+    std::vector<Fill> fills;
+    Fill fill;
+    fill.field_id_      = mondoc::FieldId{"f1"};
+    fill.current_value_ = "Acme Corp";
+    fills.push_back(fill);
+
+    auto result = DocxDocumentWriter{}.write(tpl, fills, destFile.path);
+    REQUIRE(result.has_value());
+
+    const std::string outXml = readDocumentXmlFrom(destFile.path);
+    pugi::xml_document doc;
+    REQUIRE(doc.load_buffer(outXml.data(), outXml.size()).status == pugi::status_ok);
+
+    pugi::xml_node sdt = doc.select_node("//w:sdt").node();
+    REQUIRE(sdt);
+    pugi::xml_node content = sdt.child("w:sdtContent");
+    REQUIRE(content);
+
+    int runCount = 0;
+    pugi::xml_node firstRun;
+    for (pugi::xml_node run : content.children("w:r")) {
+        ++runCount;
+        if (!firstRun) firstRun = run;
+    }
+    REQUIRE(runCount == 1);
+    pugi::xml_node t = firstRun.child("w:t");
+    REQUIRE(t);
+    REQUIRE(std::string{t.child_value()} == "Acme Corp");
+}
+
+TEST_CASE("DocxDocumentWriter: placeholder runs replaced; unfilled placeholders kept verbatim",
+          "[formats.docx_writer]") {
+    TempFile templateFile{uniqueTempPath("tpl")};
+    TempFile destFile{uniqueTempPath("out")};
+
+    constexpr std::string_view xml = R"XML(<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t xml:space="preserve">Hello {{first_name}}, signed [DATE_SIGNED].</w:t></w:r></w:p></w:body></w:document>)XML";
+    writeMinimalDocx(templateFile.path, xml);
+
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"t1"};
+    tpl.name_          = "tpl";
+    tpl.source_format_ = "docx";
+    tpl.source_path_   = templateFile.path;
+    Field f1;
+    f1.id_ = mondoc::FieldId{"f1"};
+    f1.name_ = "first_name";
+    f1.type_ = FieldType::Text;
+    Field f2;
+    f2.id_ = mondoc::FieldId{"f2"};
+    f2.name_ = "date_signed";
+    f2.type_ = FieldType::Text;
+    tpl.fields_.push_back(f1);
+    tpl.fields_.push_back(f2);
+
+    std::vector<Fill> fills;
+    Fill fill;
+    fill.field_id_      = mondoc::FieldId{"f1"};
+    fill.current_value_ = "Jane";
+    fills.push_back(fill);
+
+    auto result = DocxDocumentWriter{}.write(tpl, fills, destFile.path);
+    REQUIRE(result.has_value());
+
+    const std::string outXml = readDocumentXmlFrom(destFile.path);
+    pugi::xml_document doc;
+    REQUIRE(doc.load_buffer(outXml.data(), outXml.size()).status == pugi::status_ok);
+
+    pugi::xml_node para = doc.select_node("//w:p").node();
+    REQUIRE(para);
+
+    std::string text;
+    for (pugi::xml_node run : para.children("w:r")) {
+        for (pugi::xml_node t : run.children("w:t")) {
+            text += t.child_value();
+        }
+    }
+    REQUIRE(text == "Hello Jane, signed [DATE_SIGNED].");
 }
