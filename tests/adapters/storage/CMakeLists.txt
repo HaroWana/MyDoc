@@ -7,3 +7,9 @@ add_executable(tests_adapters_storage_template_repository test_template_reposito
 target_link_libraries(tests_adapters_storage_template_repository
     PRIVATE mondoc_adapters_storage Catch2::Catch2WithMain)
 add_test(NAME storage.template_repo COMMAND tests_adapters_storage_template_repository)
+
+add_executable(tests_adapters_storage_fill_session test_fill_session_repository.cpp)
+target_link_libraries(tests_adapters_storage_fill_session
+    PRIVATE mondoc_adapters_storage Catch2::Catch2WithMain)
+add_test(NAME storage.fill_session COMMAND tests_adapters_storage_fill_session)
+set_tests_properties(storage.fill_session PROPERTIES LABELS phase02)

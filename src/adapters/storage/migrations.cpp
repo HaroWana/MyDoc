@@ -42,9 +42,29 @@ CREATE TABLE IF NOT EXISTS template_fields (
 );
 )SQL";
 
-constexpr std::array<Migration, 2> kMigrations{
+constexpr std::string_view kV3Sql = R"SQL(
+CREATE TABLE IF NOT EXISTS fill_sessions (
+    id            TEXT PRIMARY KEY,
+    template_id   TEXT NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+    status        TEXT NOT NULL,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_fill_sessions_status_updated
+    ON fill_sessions(status, updated_at DESC);
+CREATE TABLE IF NOT EXISTS fill_values (
+    session_id    TEXT NOT NULL REFERENCES fill_sessions(id) ON DELETE CASCADE,
+    field_id      TEXT NOT NULL,
+    value         TEXT NOT NULL,
+    updated_at    INTEGER NOT NULL,
+    PRIMARY KEY (session_id, field_id)
+);
+)SQL";
+
+constexpr std::array<Migration, 3> kMigrations{
     Migration{1, kV1Sql},
     Migration{2, kV2Sql},
+    Migration{3, kV3Sql},
 };
 
 std::int64_t unixNowSeconds() noexcept {

@@ -7,3 +7,21 @@ add_executable(tests_adapters_formats_plain_text test_plain_text_reader.cpp)
 target_link_libraries(tests_adapters_formats_plain_text
     PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
 add_test(NAME formats.plain_text COMMAND tests_adapters_formats_plain_text)
+
+add_executable(tests_adapters_formats_docx_writer test_docx_document_writer.cpp)
+target_link_libraries(tests_adapters_formats_docx_writer
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.docx_writer COMMAND tests_adapters_formats_docx_writer)
+set_tests_properties(formats.docx_writer PROPERTIES LABELS phase02)
+
+add_executable(tests_adapters_formats_pdf_writer test_pdf_document_writer.cpp)
+target_link_libraries(tests_adapters_formats_pdf_writer
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.pdf_writer COMMAND tests_adapters_formats_pdf_writer)
+set_tests_properties(formats.pdf_writer PROPERTIES LABELS phase02)
+
+add_executable(tests_adapters_formats_text_writer test_text_document_writer.cpp)
+target_link_libraries(tests_adapters_formats_text_writer
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.text_writer COMMAND tests_adapters_formats_text_writer)
+set_tests_properties(formats.text_writer PROPERTIES LABELS phase02)
