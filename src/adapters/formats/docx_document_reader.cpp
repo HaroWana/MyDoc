@@ -119,7 +119,8 @@ readDocumentXml(zip_t* zf) {
 }
 
 void extractSdtFields(const pugi::xml_node& root,
-                      std::vector<mondoc::domain::Field>& out) {
+                      std::vector<mondoc::domain::Field>& out,
+                      std::unordered_set<std::string>& seen) {
     for (pugi::xml_node node : root.children()) {
         if (std::string_view{node.name()} == "w:sdt") {
             pugi::xml_node props = node.child("w:sdtPr");
@@ -134,7 +135,7 @@ void extractSdtFields(const pugi::xml_node& root,
                     }
                 }
                 std::string name = normalize(raw);
-                if (!name.empty()) {
+                if (!name.empty() && seen.insert(name).second) {
                     mondoc::domain::Field f;
                     f.id_   = mondoc::FieldId{generateUuid()};
                     f.name_ = std::move(name);
@@ -143,7 +144,7 @@ void extractSdtFields(const pugi::xml_node& root,
                 }
             }
         }
-        extractSdtFields(node, out);
+        extractSdtFields(node, out, seen);
     }
 }
 
@@ -158,7 +159,8 @@ std::string reconstructParagraphText(const pugi::xml_node& para) {
 }
 
 void scanPlaceholders(const std::string& text,
-                      std::vector<mondoc::domain::Field>& out) {
+                      std::vector<mondoc::domain::Field>& out,
+                      std::unordered_set<std::string>& seen) {
     static const std::regex kDoubleBrace{R"(\{\{\s*([A-Za-z_][A-Za-z0-9_ ]*?)\s*\}\})"};
     static const std::regex kSquareBracket{R"(\[([A-Za-z_][A-Za-z0-9_ ]+?)\])"};
     static const std::regex kAngleBracket{R"(<([A-Za-z_][A-Za-z0-9_ ]+?)>)"};
@@ -167,7 +169,7 @@ void scanPlaceholders(const std::string& text,
         for (auto it = std::sregex_iterator{text.begin(), text.end(), re};
              it != std::sregex_iterator{}; ++it) {
             std::string name = normalize((*it)[1].str());
-            if (name.empty()) continue;
+            if (name.empty() || !seen.insert(name).second) continue;
             mondoc::domain::Field f;
             f.id_   = mondoc::FieldId{generateUuid()};
             f.name_ = std::move(name);
@@ -181,12 +183,13 @@ void scanPlaceholders(const std::string& text,
 }
 
 void extractPlaceholderFields(const pugi::xml_node& root,
-                              std::vector<mondoc::domain::Field>& out) {
+                              std::vector<mondoc::domain::Field>& out,
+                              std::unordered_set<std::string>& seen) {
     for (pugi::xml_node node : root.children()) {
         if (std::string_view{node.name()} == "w:p") {
-            scanPlaceholders(reconstructParagraphText(node), out);
+            scanPlaceholders(reconstructParagraphText(node), out, seen);
         }
-        extractPlaceholderFields(node, out);
+        extractPlaceholderFields(node, out, seen);
     }
 }
 
@@ -253,10 +256,12 @@ DocxDocumentReader::read(const std::filesystem::path& path) {
     }
 
     std::vector<mondoc::domain::Field> sdtFields;
-    extractSdtFields(doc, sdtFields);
+    std::unordered_set<std::string> sdtSeen;
+    extractSdtFields(doc, sdtFields, sdtSeen);
 
     std::vector<mondoc::domain::Field> placeholderFields;
-    extractPlaceholderFields(doc, placeholderFields);
+    std::unordered_set<std::string> placeholderSeen;
+    extractPlaceholderFields(doc, placeholderFields, placeholderSeen);
 
     mondoc::domain::Template t;
     t.id_            = mondoc::TemplateId{generateUuid()};
