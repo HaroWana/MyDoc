@@ -186,9 +186,10 @@ std::vector<mondoc::domain::Field> SchemaDockWidget::currentFields() const {
         auto* typeItem = table_->item(row, 1);
         if (!nameItem) continue;
 
+        const std::string name = nameItem->text().trimmed().toStdString();
+        if (name.empty()) continue;
         const QString idStr = nameItem->data(kFieldIdRole).toString();
         const std::string id = idStr.isEmpty() ? generateUuid() : idStr.toStdString();
-        const std::string name = nameItem->text().toStdString();
         const int typeIdx = typeItem ? typeItem->data(Qt::EditRole).toInt() : 0;
 
         result.push_back(mondoc::domain::Field{
