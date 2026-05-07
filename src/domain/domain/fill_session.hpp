@@ -6,7 +6,7 @@
 
 namespace mondoc::domain {
 
-enum class FillStatus { Created, Pipelining, Reviewing, Exported, Failed };
+enum class FillStatus { Created, Pipelining, Reviewing, Exported, Failed, Discarded };
 
 struct FillSession {
     FillSessionId id_;

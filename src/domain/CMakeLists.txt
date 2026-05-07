@@ -9,6 +9,7 @@ add_library(mondoc_domain STATIC
     domain/fill_session.hpp
     domain/i_document_reader.hpp
     domain/i_template_repository.hpp
+    domain/i_fill_session_repository.hpp
 )
 
 set_target_properties(mondoc_domain PROPERTIES LINKER_LANGUAGE CXX)
