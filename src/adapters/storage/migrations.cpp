@@ -81,12 +81,12 @@ mondoc::expected<int, mondoc::Error> runMigrations(SqliteConnection& conn) {
             db.exec(std::string{m.sql});
             SQLite::Statement insert(
                 db,
-                "INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)");
+                "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(?, ?)");
             insert.bind(1, m.version);
             insert.bind(2, static_cast<int64_t>(unixNowSeconds()));
             insert.exec();
-            db.exec("PRAGMA user_version = " + std::to_string(m.version) + ";");
             tx.commit();
+            db.exec("PRAGMA user_version = " + std::to_string(m.version) + ";");
             currentVersion = m.version;
         } catch (const SQLite::Exception& e) {
             return mondoc::unexpected(mondoc::Error::migration(
