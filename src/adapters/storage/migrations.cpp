@@ -83,7 +83,7 @@ mondoc::expected<int, mondoc::Error> runMigrations(SqliteConnection& conn) {
                 db,
                 "INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)");
             insert.bind(1, m.version);
-            insert.bind(2, static_cast<long long>(unixNowSeconds()));
+            insert.bind(2, static_cast<int64_t>(unixNowSeconds()));
             insert.exec();
             tx.commit();
             db.exec("PRAGMA user_version = " + std::to_string(m.version) + ";");

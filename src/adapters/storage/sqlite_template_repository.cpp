@@ -66,7 +66,7 @@ SqliteTemplateRepository::save(const mondoc::domain::Template& t) {
     try {
         SQLite::Transaction tx(db);
 
-        const auto now = static_cast<long long>(unixNowSeconds());
+        const auto now = static_cast<int64_t>(unixNowSeconds());
 
         SQLite::Statement upsert(db,
             "INSERT OR REPLACE INTO templates"
@@ -100,7 +100,7 @@ SqliteTemplateRepository::save(const mondoc::domain::Template& t) {
             insertField.bind(2, t.id_.value());
             insertField.bind(3, f.name_);
             insertField.bind(4, fieldTypeToString(f.type_));
-            insertField.bind(5, static_cast<long long>(i));
+            insertField.bind(5, static_cast<int64_t>(i));
             insertField.exec();
         }
 
