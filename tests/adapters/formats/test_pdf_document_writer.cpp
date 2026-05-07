@@ -3,10 +3,7 @@
 #include <podofo/podofo.h>
 
 #include <chrono>
-#include <cstring>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <random>
 #include <string>
 #include <string_view>
@@ -42,21 +39,24 @@ struct TempFile {
     ~TempFile() { std::error_code ec; std::filesystem::remove(path, ec); }
 };
 
-std::vector<unsigned char> readBytes(const std::filesystem::path& p) {
-    std::ifstream in(p, std::ios::binary);
-    return std::vector<unsigned char>(
-        std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{});
-}
-
-bool containsAscii(const std::vector<unsigned char>& bytes,
-                   std::string_view needle) {
-    if (needle.empty() || bytes.size() < needle.size()) return false;
-    for (std::size_t i = 0; i + needle.size() <= bytes.size(); ++i) {
-        if (std::memcmp(bytes.data() + i, needle.data(), needle.size()) == 0) {
-            return true;
+std::string extractAllText(const std::filesystem::path& pdfPath) {
+    PoDoFo::PdfMemDocument doc;
+    doc.Load(pdfPath.string());
+    std::string out;
+    const unsigned count = doc.GetPages().GetCount();
+    for (unsigned i = 0; i < count; ++i) {
+        std::vector<PoDoFo::PdfTextEntry> entries;
+        doc.GetPages().GetPageAt(i).ExtractTextTo(entries);
+        for (const auto& e : entries) {
+            out += e.Text;
+            out += '\n';
         }
     }
-    return false;
+    return out;
+}
+
+bool contains(std::string_view haystack, std::string_view needle) {
+    return haystack.find(needle) != std::string_view::npos;
 }
 
 }  // namespace
@@ -100,12 +100,12 @@ TEST_CASE("PdfDocumentWriter: output bytes contain template name and each field 
     auto result = PdfDocumentWriter{}.write(tpl, fills, tmp.path);
     REQUIRE(result.has_value());
 
-    auto bytes = readBytes(tmp.path);
-    REQUIRE(containsAscii(bytes, "Invoice"));
-    REQUIRE(containsAscii(bytes, "customer"));
-    REQUIRE(containsAscii(bytes, "Acme"));
-    REQUIRE(containsAscii(bytes, "amount"));
-    REQUIRE(containsAscii(bytes, "42"));
+    const std::string text = extractAllText(tmp.path);
+    REQUIRE(contains(text, "Invoice"));
+    REQUIRE(contains(text, "customer"));
+    REQUIRE(contains(text, "Acme"));
+    REQUIRE(contains(text, "amount"));
+    REQUIRE(contains(text, "42"));
 }
 
 TEST_CASE("PdfDocumentWriter: succeeds when template source_path_ is empty",
