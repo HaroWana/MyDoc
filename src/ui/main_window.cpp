@@ -31,7 +31,6 @@
 #include <QVariant>
 #include <QWidget>
 
-#include <algorithm>
 #include <set>
 #include <string>
 
@@ -243,9 +242,11 @@ void MainWindow::refreshTemplateList() {
         return;
     }
 
+    cachedTemplates_ = std::move(*result);
+
     int restoreRow = -1;
-    for (int i = 0; i < static_cast<int>(result->size()); ++i) {
-        const auto& tpl = (*result)[i];
+    for (int i = 0; i < static_cast<int>(cachedTemplates_.size()); ++i) {
+        const auto& tpl = cachedTemplates_[i];
         auto* item = new QListWidgetItem(QString::fromStdString(tpl.name_));
         item->setData(kTemplateIdRole, QString::fromStdString(tpl.id_.value()));
         templateList_->addItem(item);
@@ -329,37 +330,19 @@ void MainWindow::onSchemaDiscarded() {
 }
 
 void MainWindow::onTemplateSelected(int row) {
-    if (row < 0) {
+    if (row < 0 || row >= static_cast<int>(cachedTemplates_.size())) {
         selectedTemplate_.reset();
         centralStack_->setCurrentIndex(0);
         return;
     }
-    auto id = selectedTemplateId();
-    if (!id) {
-        selectedTemplate_.reset();
-        centralStack_->setCurrentIndex(0);
-        return;
-    }
-    auto found = service_.listTemplates();
-    if (!found) {
-        QMessageBox::critical(this, tr("MonDoc"),
-            QString::fromStdString(found.error().message()));
-        return;
-    }
-    auto it = std::find_if(found->begin(), found->end(),
-        [&](const mondoc::domain::Template& t) { return t.id_ == *id; });
-    if (it == found->end()) {
-        selectedTemplate_.reset();
-        centralStack_->setCurrentIndex(0);
-        return;
-    }
-    selectedTemplate_ = *it;
-    detailNameLabel_->setText(QString::fromStdString(it->name_));
+    selectedTemplate_ = cachedTemplates_[row];
+    const auto& t = *selectedTemplate_;
+    detailNameLabel_->setText(QString::fromStdString(t.name_));
     detailFormatLabel_->setText(
         tr("Format:") + QStringLiteral(" ") +
-        QString::fromStdString(it->source_format_));
+        QString::fromStdString(t.source_format_));
     detailFieldCountLabel_->setText(
-        tr("%n field(s) extracted", "", static_cast<int>(it->fields_.size())));
+        tr("%n field(s) extracted", "", static_cast<int>(t.fields_.size())));
     detailCreatedLabel_->setText(tr("Added:"));
     centralStack_->setCurrentIndex(1);
 }

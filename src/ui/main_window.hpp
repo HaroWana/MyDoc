@@ -72,6 +72,7 @@ private:
 
     mondoc::domain::Template pendingTemplate_;
     std::optional<mondoc::domain::Template> selectedTemplate_;
+    std::vector<mondoc::domain::Template> cachedTemplates_;
 };
 
 }  // namespace mondoc::ui
