@@ -47,7 +47,9 @@ int main(int argc, char* argv[]) {
     }
 
     mondoc::app::CompositionRoot root{std::move(*connResult)};
-    mondoc::ui::MainWindow window{root.service_};
+    mondoc::ui::MainWindow window{root.service_,
+                                  root.fill_session_service_,
+                                  root.repo_};
     window.resize(1024, 768);
     window.show();
 
