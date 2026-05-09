@@ -6,6 +6,7 @@ add_library(mondoc_ui STATIC
     field_form_pane.cpp
     edit_field_command.cpp
     export_dialog.cpp
+    resume_banner.cpp
 )
 
 target_include_directories(mondoc_ui PUBLIC
