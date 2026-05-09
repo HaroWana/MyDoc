@@ -31,9 +31,13 @@
 #include <QVariant>
 #include <QWidget>
 
+#include <chrono>
+#include <ctime>
 #include <set>
 #include <string>
 
+#include "fill_session_view.hpp"
+#include "resume_banner.hpp"
 #include "schema_dock_widget.hpp"
 
 namespace mondoc::ui {
@@ -67,22 +71,33 @@ QString pathToQString(const std::filesystem::path& p) {
 
 }  // namespace
 
-MainWindow::MainWindow(mondoc::services::TemplateService& service, QWidget* parent)
+MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
+                       mondoc::services::FillSessionService& fillService,
+                       mondoc::domain::ITemplateRepository& templateRepo,
+                       QWidget* parent)
     : QMainWindow(parent),
-      service_(service),
+      service_(templateService),
+      fillService_(fillService),
+      templateRepo_(templateRepo),
       templateList_(new QListWidget(this)),
       centralStack_(new QStackedWidget(this)),
       searchBox_(new QLineEdit(this)),
       schemaWidget_(new SchemaDockWidget(this)),
+      fillSessionView_(nullptr),
+      resumeBanner_(nullptr),
       detailNameLabel_(nullptr),
       detailFormatLabel_(nullptr),
       detailFieldCountLabel_(nullptr),
       detailCreatedLabel_(nullptr),
+      detailFillBtn_(nullptr),
       detailRenameBtn_(nullptr),
       detailDuplicateBtn_(nullptr),
       detailDeleteBtn_(nullptr) {
     setWindowTitle(tr("MonDoc"));
     setAcceptDrops(true);
+
+    fillSessionView_ = new FillSessionView(fillService_, templateRepo_, this);
+    resumeBanner_ = new ResumeBanner(this);
 
     auto* sidebar = new QWidget(this);
     sidebar->setMinimumWidth(180);
@@ -94,6 +109,7 @@ MainWindow::MainWindow(mondoc::services::TemplateService& service, QWidget* pare
     buildDetailPage(detailPage);
     centralStack_->addWidget(emptyPage);
     centralStack_->addWidget(detailPage);
+    centralStack_->addWidget(fillSessionView_);
     centralStack_->setCurrentIndex(0);
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
@@ -139,7 +155,21 @@ MainWindow::MainWindow(mondoc::services::TemplateService& service, QWidget* pare
     connect(deleteAction, &QAction::triggered, this, &MainWindow::onDeleteTemplate);
     templateList_->addAction(deleteAction);
 
+    connect(fillSessionView_, &FillSessionView::backRequested,
+            this, &MainWindow::onSessionBackRequested);
+    connect(fillSessionView_, &FillSessionView::draftSaved,
+            this, &MainWindow::onSessionDraftSaved);
+    connect(fillSessionView_, &FillSessionView::sessionExported,
+            this, &MainWindow::onSessionExported);
+    connect(fillSessionView_, &FillSessionView::exportFailed,
+            this, &MainWindow::onSessionExportFailed);
+    connect(resumeBanner_, &ResumeBanner::resumeRequested,
+            this, &MainWindow::onResumeRequested);
+    connect(resumeBanner_, &ResumeBanner::discardRequested,
+            this, &MainWindow::onDiscardRequested);
+
     refreshTemplateList();
+    refreshResumeBanner();
 }
 
 void MainWindow::buildSidebar(QWidget* sidebar) {
@@ -150,6 +180,7 @@ void MainWindow::buildSidebar(QWidget* sidebar) {
     searchBox_->setPlaceholderText(tr("Search templates..."));
     searchBox_->setAccessibleName(tr("Search templates"));
     layout->addWidget(searchBox_);
+    layout->addWidget(resumeBanner_);
 
     templateList_->setSelectionMode(QAbstractItemView::SingleSelection);
     templateList_->setAccessibleName(tr("Template list"));
@@ -206,6 +237,21 @@ void MainWindow::buildDetailPage(QWidget* page) {
     sep->setFrameShape(QFrame::HLine);
     sep->setFrameShadow(QFrame::Sunken);
     layout->addWidget(sep);
+
+    auto* primaryRow = new QHBoxLayout();
+    detailFillBtn_ = new QPushButton(tr("Fill Session\xe2\x80\xa6"), page);
+    detailFillBtn_->setStyleSheet(
+        QStringLiteral("QPushButton { background-color: #2563EB; color: white; "
+                       "padding: 6px 12px; }"));
+    detailFillBtn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+F")));
+    detailFillBtn_->setAccessibleName(tr("Fill Session"));
+    detailFillBtn_->setToolTip(tr("Fill Session"));
+    primaryRow->addWidget(detailFillBtn_);
+    primaryRow->addStretch(1);
+    layout->addLayout(primaryRow);
+
+    connect(detailFillBtn_, &QPushButton::clicked,
+            this, &MainWindow::onFillSessionClicked);
 
     auto* actionRow = new QHBoxLayout();
     detailRenameBtn_ = new QPushButton(tr("Rename Template"), page);
@@ -421,6 +467,7 @@ void MainWindow::onDeleteTemplate() {
         return;
     }
     refreshTemplateList();
+    refreshResumeBanner();
     if (templateList_->count() == 0) {
         centralStack_->setCurrentIndex(0);
     }
@@ -488,6 +535,121 @@ void MainWindow::dropEvent(QDropEvent* event) {
         triggerRegistration(qStringToPath(url.toLocalFile()));
     }
     event->acceptProposedAction();
+}
+
+void MainWindow::onFillSessionClicked() {
+    auto id = selectedTemplateId();
+    if (!id) return;
+
+    auto sessionId = fillService_.openSession(*id);
+    if (!sessionId) {
+        QMessageBox::critical(this, tr("MonDoc"),
+            QString::fromStdString(sessionId.error().message()));
+        return;
+    }
+
+    const QStringList paths = QFileDialog::getOpenFileNames(
+        this, tr("Attach source documents (optional)"), QString{},
+        tr("Source documents (*.docx *.txt *.md)"));
+    std::vector<std::filesystem::path> sourcePaths;
+    sourcePaths.reserve(static_cast<std::size_t>(paths.size()));
+    for (const auto& p : paths) {
+        sourcePaths.push_back(qStringToPath(p));
+    }
+
+    QString err;
+    if (!fillSessionView_->openSession(*sessionId, sourcePaths, &err)) {
+        QMessageBox::critical(this, tr("MonDoc"), err);
+        (void)fillService_.discardSession(*sessionId);
+        return;
+    }
+    centralStack_->setCurrentIndex(2);
+}
+
+void MainWindow::onSessionBackRequested() {
+    fillSessionView_->clearSession();
+    centralStack_->setCurrentIndex(templateList_->count() == 0 ? 0 : 1);
+    refreshResumeBanner();
+}
+
+void MainWindow::onSessionDraftSaved() {
+    statusBar()->showMessage(tr("Draft saved."), 2000);
+}
+
+void MainWindow::onSessionExported(QString fileName) {
+    fillSessionView_->clearSession();
+    centralStack_->setCurrentIndex(templateList_->count() == 0 ? 0 : 1);
+    refreshResumeBanner();
+    statusBar()->showMessage(
+        tr("\xe2\x80\x9c%1\xe2\x80\x9d exported.").arg(fileName), 4000);
+}
+
+void MainWindow::onSessionExportFailed(QString message) {
+    statusBar()->showMessage(tr("Export failed: %1").arg(message), 6000);
+}
+
+void MainWindow::onResumeRequested(mondoc::FillSessionId sessionId) {
+    QString err;
+    std::vector<std::filesystem::path> sourcePaths;
+    if (!fillSessionView_->openSession(sessionId, sourcePaths, &err)) {
+        QMessageBox::critical(this, tr("MonDoc"), err);
+        return;
+    }
+    centralStack_->setCurrentIndex(2);
+}
+
+void MainWindow::onDiscardRequested(mondoc::FillSessionId sessionId) {
+    auto r = fillService_.discardSession(sessionId);
+    if (!r) {
+        QMessageBox::warning(this, tr("MonDoc"),
+            QString::fromStdString(r.error().message()));
+    }
+    refreshResumeBanner();
+}
+
+void MainWindow::refreshResumeBanner() {
+    auto drafts = fillService_.listDrafts();
+    if (!drafts) {
+        resumeBanner_->setDrafts({});
+        return;
+    }
+    std::vector<DraftSummary> rows;
+    rows.reserve(drafts->size());
+    for (const auto& s : *drafts) {
+        DraftSummary d;
+        d.sessionId = s.id_;
+        auto tpl = templateRepo_.findById(s.template_id_);
+        d.templateName = tpl
+            ? QString::fromStdString(tpl->name_)
+            : QString::fromStdString(s.template_id_.value());
+        d.relativeTimestamp = relativeTimestamp(s.updated_at_unix_);
+        rows.push_back(std::move(d));
+    }
+    resumeBanner_->setDrafts(rows);
+}
+
+QString MainWindow::relativeTimestamp(std::int64_t updatedAtUnix) const {
+    using namespace std::chrono;
+    const auto now = duration_cast<seconds>(
+        system_clock::now().time_since_epoch()).count();
+    const auto delta = now - updatedAtUnix;
+    if (delta < 60)        return tr("just now");
+    if (delta < 3600)      return tr("%n minute(s) ago", "",
+                                       static_cast<int>(delta / 60));
+    if (delta < 86400)     return tr("%n hour(s) ago", "",
+                                       static_cast<int>(delta / 3600));
+    if (delta < 7 * 86400) return tr("%n day(s) ago", "",
+                                       static_cast<int>(delta / 86400));
+    const std::time_t t = static_cast<std::time_t>(updatedAtUnix);
+    char buf[32];
+    std::tm tm{};
+#if defined(_WIN32)
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tm);
+    return QString::fromUtf8(buf);
 }
 
 }  // namespace mondoc::ui
