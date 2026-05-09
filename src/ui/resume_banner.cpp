@@ -34,33 +34,41 @@ void ResumeBanner::setDrafts(const std::vector<DraftSummary>& drafts) {
     for (std::size_t i = 0; i < drafts.size(); ++i) {
         const auto& d = drafts[i];
         auto* row = new QWidget(this);
-        auto* rowLayout = new QHBoxLayout(row);
+        auto* rowLayout = new QVBoxLayout(row);
         rowLayout->setContentsMargins(0, 0, 0, 0);
-        rowLayout->setSpacing(8);
+        rowLayout->setSpacing(4);
 
         auto* label = new QLabel(
             QStringLiteral("%1 \xe2\x80\x94 %2")
                 .arg(d.templateName, d.relativeTimestamp),
             row);
         label->setAccessibleName(tr("Draft session"));
-        rowLayout->addWidget(label, 1);
+        label->setWordWrap(true);
+        rowLayout->addWidget(label);
 
-        auto* resumeBtn = new QPushButton(tr("Resume Session"), row);
-        resumeBtn->setAccessibleName(tr("Resume Session"));
+        auto* btnRow = new QWidget(row);
+        auto* btnLayout = new QHBoxLayout(btnRow);
+        btnLayout->setContentsMargins(0, 0, 0, 0);
+        btnLayout->setSpacing(8);
+
         const auto sid = d.sessionId;
+        auto* resumeBtn = new QPushButton(tr("Resume Session"), btnRow);
+        resumeBtn->setAccessibleName(tr("Resume Session"));
         connect(resumeBtn, &QPushButton::clicked, this, [this, sid]() {
             emit resumeRequested(sid);
         });
 
-        auto* discardBtn = new QPushButton(tr("Discard Draft"), row);
+        auto* discardBtn = new QPushButton(tr("Discard Draft"), btnRow);
         discardBtn->setStyleSheet(QStringLiteral("color: #DC2626;"));
         discardBtn->setAccessibleName(tr("Discard Draft"));
         connect(discardBtn, &QPushButton::clicked, this, [this, sid]() {
             confirmAndEmitDiscard(sid);
         });
 
-        rowLayout->addWidget(resumeBtn);
-        rowLayout->addWidget(discardBtn);
+        btnLayout->addWidget(resumeBtn);
+        btnLayout->addWidget(discardBtn);
+        btnLayout->addStretch(1);
+        rowLayout->addWidget(btnRow);
         layout_->addWidget(row);
 
         if (i + 1 < drafts.size()) {
