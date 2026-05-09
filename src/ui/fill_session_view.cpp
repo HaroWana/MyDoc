@@ -5,6 +5,7 @@
 #include <QHBoxLayout>
 #include <QKeySequence>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSplitter>
 #include <QString>
@@ -175,7 +176,25 @@ void FillSessionView::clearSession() {
     currentTemplateId_ = mondoc::TemplateId{};
 }
 
-void FillSessionView::onBackClicked() { emit backRequested(); }
+void FillSessionView::onBackClicked() {
+    if (undoStack_->count() > 0) {
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Warning);
+        box.setWindowTitle(tr("Discard Session"));
+        box.setText(
+            tr("Discard the fill session for \xe2\x80\x9c%1\xe2\x80\x9d? "
+               "Unsaved changes will be lost.")
+                .arg(templateNameLabel_->text()));
+        auto* discardBtn = box.addButton(tr("Discard Session"),
+                                         QMessageBox::DestructiveRole);
+        auto* keepBtn = box.addButton(tr("Keep Editing"), QMessageBox::RejectRole);
+        box.setDefaultButton(keepBtn);
+        box.exec();
+        if (box.clickedButton() != discardBtn) return;
+        (void)service_.discardSession(currentSessionId_);
+    }
+    emit backRequested();
+}
 
 void FillSessionView::onSaveDraftClicked() { emit draftSaved(); }
 
