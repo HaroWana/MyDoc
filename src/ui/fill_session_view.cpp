@@ -177,7 +177,7 @@ void FillSessionView::clearSession() {
 }
 
 void FillSessionView::onBackClicked() {
-    if (undoStack_->count() > 0) {
+    if (!currentSessionId_.value().empty()) {
         QMessageBox box(this);
         box.setIcon(QMessageBox::Warning);
         box.setWindowTitle(tr("Discard Session"));
