@@ -52,14 +52,15 @@ TEST_CASE("SqliteConnection: journal_mode is wal or memory", "[storage]") {
     REQUIRE((mode == "wal" || mode == "memory"));
 }
 
-TEST_CASE("runMigrations: applies version 1 and bumps user_version", "[storage]") {
+TEST_CASE("runMigrations: applies all migrations and bumps user_version", "[storage]") {
     auto conn = SqliteConnection::open(":memory:");
     REQUIRE(conn.has_value());
 
     auto result = runMigrations(*conn);
     REQUIRE(result.has_value());
-    REQUIRE(*result == 1);
-    REQUIRE(readUserVersion(conn->raw()) == 1);
+    int expectedVersion = static_cast<int>(registeredMigrations().size());
+    REQUIRE(*result == expectedVersion);
+    REQUIRE(readUserVersion(conn->raw()) == expectedVersion);
 }
 
 TEST_CASE("runMigrations: schema_migrations row count equals migration count", "[storage]") {
