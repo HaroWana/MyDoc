@@ -106,15 +106,38 @@ extractDocxText(const std::filesystem::path& path) {
             "failed to open word/document.xml"));
     }
     std::string xml;
-    xml.resize(static_cast<std::size_t>(st.size));
-    zip_int64_t got = zip_fread(entry, xml.data(), st.size);
-    zip_fclose(entry);
-    zip_discard(zf);
-    if (got < 0) {
-        return mondoc::unexpected(mondoc::Error::generic(
-            "read error in word/document.xml"));
+    if ((st.valid & ZIP_STAT_SIZE) && st.size <= kMaxSourceBytes) {
+        xml.resize(static_cast<std::size_t>(st.size));
+        zip_int64_t got = zip_fread(entry, xml.data(), st.size);
+        zip_fclose(entry);
+        zip_discard(zf);
+        if (got < 0) {
+            return mondoc::unexpected(mondoc::Error::generic(
+                "read error in word/document.xml"));
+        }
+        xml.resize(static_cast<std::size_t>(got));
+    } else {
+        constexpr std::size_t kChunkSize = 64 * 1024;
+        std::array<char, kChunkSize> buf{};
+        for (;;) {
+            zip_int64_t got = zip_fread(entry, buf.data(), buf.size());
+            if (got < 0) {
+                zip_fclose(entry);
+                zip_discard(zf);
+                return mondoc::unexpected(mondoc::Error::generic(
+                    "read error in word/document.xml"));
+            }
+            if (got == 0) break;
+            if (xml.size() + static_cast<std::size_t>(got) > kMaxSourceBytes) {
+                zip_fclose(entry);
+                zip_discard(zf);
+                return mondoc::unexpected(mondoc::Error::generic("docx too large"));
+            }
+            xml.append(buf.data(), static_cast<std::size_t>(got));
+        }
+        zip_fclose(entry);
+        zip_discard(zf);
     }
-    xml.resize(static_cast<std::size_t>(got));
 
     pugi::xml_document doc;
     auto pr = doc.load_buffer(xml.data(), xml.size());
