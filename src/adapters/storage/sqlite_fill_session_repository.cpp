@@ -206,6 +206,8 @@ SqliteFillSessionRepository::upsertValue(const mondoc::FillSessionId& sessionId,
     try {
         const auto now = static_cast<int64_t>(unixNowSeconds());
 
+        SQLite::Transaction tx(db);
+
         SQLite::Statement upsert(db,
             "INSERT INTO fill_values(session_id, field_id, value, updated_at)"
             " VALUES(?,?,?,?)"
@@ -224,6 +226,7 @@ SqliteFillSessionRepository::upsertValue(const mondoc::FillSessionId& sessionId,
         bump.bind(2, sessionId.value());
         bump.exec();
 
+        tx.commit();
         return {};
     } catch (const SQLite::Exception& e) {
         return mondoc::unexpected(mondoc::Error::generic(e.what()));
