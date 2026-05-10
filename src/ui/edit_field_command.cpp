@@ -42,7 +42,7 @@ bool EditFieldCommand::mergeWith(const QUndoCommand* other) {
 
 void EditFieldCommand::applyValue(const std::string& v) {
     auto write = service_.setFieldValue(sessionId_, fieldId_, v);
-    (void)write;
+    if (!write) return;
     if (!inputWidget_) return;
     QSignalBlocker block(inputWidget_);
     if (auto* le = qobject_cast<QLineEdit*>(inputWidget_)) {
