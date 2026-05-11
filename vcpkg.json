@@ -12,7 +12,13 @@
     {
       "name": "podofo",
       "default-features": false
-    }
+    },
+    {
+      "name": "cpp-httplib",
+      "default-features": false,
+      "features": ["openssl"]
+    },
+    "nlohmann-json"
   ],
   "builtin-baseline": "52f5569a8e867859fac967c1e3f10ca0a8a3cc39",
   "overrides": [

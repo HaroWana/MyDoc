@@ -61,10 +61,28 @@ CREATE TABLE IF NOT EXISTS fill_values (
 );
 )SQL";
 
-constexpr std::array<Migration, 3> kMigrations{
+constexpr std::string_view kV4Sql = R"SQL(
+ALTER TABLE fill_values ADD COLUMN confidence TEXT NOT NULL DEFAULT 'manual';
+CREATE TABLE IF NOT EXISTS fill_source_refs (
+    session_id  TEXT NOT NULL,
+    field_id    TEXT NOT NULL,
+    ref_order   INTEGER NOT NULL,
+    source_id   TEXT NOT NULL,
+    char_start  INTEGER NOT NULL,
+    char_end    INTEGER NOT NULL,
+    excerpt     TEXT NOT NULL,
+    PRIMARY KEY (session_id, field_id, ref_order),
+    FOREIGN KEY (session_id) REFERENCES fill_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_fill_source_refs_session_field
+    ON fill_source_refs(session_id, field_id);
+)SQL";
+
+constexpr std::array<Migration, 4> kMigrations{
     Migration{1, kV1Sql},
     Migration{2, kV2Sql},
     Migration{3, kV3Sql},
+    Migration{4, kV4Sql},
 };
 
 std::int64_t unixNowSeconds() noexcept {

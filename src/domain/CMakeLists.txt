@@ -5,6 +5,7 @@ add_library(mondoc_domain STATIC
     domain/field.hpp
     domain/template.hpp
     domain/source_ref.hpp
+    domain/confidence.hpp
     domain/fill.hpp
     domain/fill_session.hpp
     domain/i_document_reader.hpp

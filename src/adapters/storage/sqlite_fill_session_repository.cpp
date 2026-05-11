@@ -233,4 +233,18 @@ SqliteFillSessionRepository::upsertValue(const mondoc::FillSessionId& sessionId,
     }
 }
 
+mondoc::expected<void, mondoc::Error>
+SqliteFillSessionRepository::upsertConfidence(const mondoc::FillSessionId&,
+                                               const mondoc::FieldId&,
+                                               mondoc::domain::Confidence) {
+    return mondoc::unexpected(mondoc::Error::generic("not implemented"));
+}
+
+mondoc::expected<void, mondoc::Error>
+SqliteFillSessionRepository::replaceSourceRefs(const mondoc::FillSessionId&,
+                                                const mondoc::FieldId&,
+                                                const std::vector<mondoc::domain::SourceRef>&) {
+    return mondoc::unexpected(mondoc::Error::generic("not implemented"));
+}
+
 }  // namespace mondoc::adapters::storage

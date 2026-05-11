@@ -15,6 +15,7 @@
 #include "domain/fill_session.hpp"
 #include "domain/i_fill_session_repository.hpp"
 #include "domain/i_template_repository.hpp"
+#include "domain/source_ref.hpp"
 #include "domain/template.hpp"
 #include "mondoc/error.hpp"
 #include "mondoc/id.hpp"
@@ -22,9 +23,11 @@
 using mondoc::FieldId;
 using mondoc::FillSessionId;
 using mondoc::TemplateId;
+using mondoc::domain::Confidence;
 using mondoc::domain::Field;
 using mondoc::domain::FieldType;
 using mondoc::domain::Fill;
+using mondoc::domain::SourceRef;
 using mondoc::domain::FillSession;
 using mondoc::domain::FillStatus;
 using mondoc::domain::IFillSessionRepository;
@@ -109,6 +112,17 @@ public:
         f.field_id_      = fieldId;
         f.current_value_ = value;
         it->second.fills_.push_back(std::move(f));
+        return {};
+    }
+
+    mondoc::expected<void, mondoc::Error>
+    upsertConfidence(const FillSessionId&, const FieldId&, Confidence) override {
+        return {};
+    }
+
+    mondoc::expected<void, mondoc::Error>
+    replaceSourceRefs(const FillSessionId&, const FieldId&,
+                      const std::vector<SourceRef>&) override {
         return {};
     }
 
