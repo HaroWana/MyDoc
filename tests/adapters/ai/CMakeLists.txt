@@ -1,3 +1,5 @@
+find_package(httplib CONFIG REQUIRED)
+
 add_executable(tests_adapters_ai_llm_config test_llm_config.cpp)
 target_link_libraries(tests_adapters_ai_llm_config
     PRIVATE mondoc_adapters_ai Catch2::Catch2WithMain)
@@ -6,7 +8,7 @@ set_tests_properties(ai.llm_config PROPERTIES LABELS phase03)
 
 add_executable(tests_adapters_ai_error test_llm_error_classification.cpp)
 target_link_libraries(tests_adapters_ai_error
-    PRIVATE mondoc_adapters_ai Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_ai httplib::httplib Catch2::Catch2WithMain)
 add_test(NAME ai.error_classification COMMAND tests_adapters_ai_error)
 set_tests_properties(ai.error_classification PROPERTIES LABELS phase03)
 
