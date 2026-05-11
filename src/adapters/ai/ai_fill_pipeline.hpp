@@ -3,7 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
+#include "domain/confidence.hpp"
 #include "domain/fill.hpp"
 #include "domain/template.hpp"
 #include "i_llm_client.hpp"
@@ -13,6 +15,9 @@
 #include "mondoc/id.hpp"
 
 namespace mondoc::adapters::ai {
+
+mondoc::domain::Confidence parseConfidence(std::string_view s) noexcept;
+
 
 struct AiFillSourceDoc {
     mondoc::SourceDocId id_;
