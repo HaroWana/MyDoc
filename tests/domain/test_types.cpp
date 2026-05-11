@@ -69,10 +69,11 @@ TEST_CASE("SourceRef carries id, range, excerpt", "[domain.types]") {
 }
 
 TEST_CASE("Fill carries field id, value, source refs", "[domain.types]") {
-    Fill fill{FieldId{"f-1"}, "Alice",
+    Fill fill{FieldId{"f-1"}, "Alice", Confidence::Manual,
               {SourceRef{SourceDocId{"src-1"}, TextRange{0, 5}, "Alice"}}};
     REQUIRE(fill.field_id_.value() == "f-1");
     REQUIRE(fill.current_value_ == "Alice");
+    REQUIRE(fill.confidence_ == Confidence::Manual);
     REQUIRE(fill.source_refs_.size() == 1);
 }
 
