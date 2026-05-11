@@ -16,8 +16,43 @@ inline constexpr std::string_view kPass2SystemPrompt =
     "never return an empty string. Return only JSON matching the supplied "
     "schema.";
 
-std::string buildPass2UserPrompt(const mondoc::domain::Template& tpl,
-                                 const std::vector<ExtractedFact>& facts);
+inline std::string fieldTypeToLabel(mondoc::domain::FieldType t) {
+    using mondoc::domain::FieldType;
+    switch (t) {
+        case FieldType::Text:      return "Text";
+        case FieldType::Paragraph: return "Paragraph";
+        case FieldType::Number:    return "Number";
+        case FieldType::Date:      return "Date";
+        case FieldType::Checkbox:  return "Checkbox";
+        case FieldType::Dropdown:  return "Dropdown";
+    }
+    return "Text";
+}
+
+inline std::string buildPass2UserPrompt(const mondoc::domain::Template& tpl,
+                                        const std::vector<ExtractedFact>& facts) {
+    std::string out = "Template fields:\n";
+    for (const auto& f : tpl.fields_) {
+        out += "- field_id=\"";
+        out += f.id_.value();
+        out += "\" name=\"";
+        out += f.name_;
+        out += "\" type=\"";
+        out += fieldTypeToLabel(f.type_);
+        out += "\"\n";
+    }
+    out += "\nExtracted facts (with fact_index):\n";
+    for (std::size_t i = 0; i < facts.size(); ++i) {
+        out += "[" + std::to_string(i) + "] source_index=";
+        out += std::to_string(facts[i].source_index_);
+        out += " summary=\"";
+        out += facts[i].summary_;
+        out += "\" excerpt=\"";
+        out += facts[i].excerpt_;
+        out += "\"\n";
+    }
+    return out;
+}
 
 inline constexpr std::string_view kPass2JsonSchema = R"JSON({
   "type": "object",
