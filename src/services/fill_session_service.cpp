@@ -154,8 +154,11 @@ extractDocxText(const std::filesystem::path& path) {
 
 FillSessionService::FillSessionService(
     mondoc::domain::IFillSessionRepository& sessionRepo,
-    mondoc::domain::ITemplateRepository& templateRepo) noexcept
-    : sessionRepo_(sessionRepo), templateRepo_(templateRepo) {}
+    mondoc::domain::ITemplateRepository& templateRepo,
+    mondoc::adapters::ai::AiFillPipeline* aiPipeline) noexcept
+    : sessionRepo_(sessionRepo),
+      templateRepo_(templateRepo),
+      aiPipeline_(aiPipeline) {}
 
 mondoc::expected<mondoc::FillSessionId, mondoc::Error>
 FillSessionService::openSession(const mondoc::TemplateId& templateId) {
