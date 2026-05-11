@@ -1,12 +1,14 @@
 add_library(mondoc_ui STATIC
-    main_window.cpp
-    schema_dock_widget.cpp
-    fill_session_view.cpp
-    source_doc_pane.cpp
-    field_form_pane.cpp
+    ai_fill_worker.cpp
+    chat_pane.cpp
     edit_field_command.cpp
     export_dialog.cpp
+    field_form_pane.cpp
+    fill_session_view.cpp
+    main_window.cpp
     resume_banner.cpp
+    schema_dock_widget.cpp
+    source_doc_pane.cpp
 )
 
 target_include_directories(mondoc_ui PUBLIC
