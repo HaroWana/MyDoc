@@ -13,3 +13,8 @@ target_link_libraries(tests_adapters_storage_fill_session
     PRIVATE mondoc_adapters_storage Catch2::Catch2WithMain)
 add_test(NAME storage.fill_session COMMAND tests_adapters_storage_fill_session)
 set_tests_properties(storage.fill_session PROPERTIES LABELS phase02)
+
+add_test(NAME storage.fill_session_repo
+         COMMAND tests_adapters_storage_fill_session
+         "[adapters.storage][fill_session_repo][phase03]")
+set_tests_properties(storage.fill_session_repo PROPERTIES LABELS phase03)
