@@ -16,9 +16,12 @@
 #include <string_view>
 #include <utility>
 
+#include "ai_fill_pipeline.hpp"
 #include "docx_document_writer.hpp"
+#include "llm_error.hpp"
 #include "pdf_document_writer.hpp"
 #include "text_document_writer.hpp"
+#include "domain/confidence.hpp"
 
 namespace mondoc::services {
 
@@ -73,6 +76,27 @@ void collectWtTextRecursive(const pugi::xml_node& node,
             collectWtTextRecursive(child, out, firstParagraph);
         }
     }
+}
+
+mondoc::Error llmErrorToError(const mondoc::adapters::ai::LlmError& e) {
+    using K = mondoc::adapters::ai::LlmError::Kind;
+    switch (e.kind()) {
+        case K::Cancelled:   return mondoc::Error::generic("ai cancelled: " + e.message());
+        case K::Unreachable: return mondoc::Error::generic("ai unreachable: " + e.message());
+        case K::RateLimited: return mondoc::Error::generic("ai rate-limited: " + e.message());
+        case K::BadResponse: return mondoc::Error::generic("ai bad response: " + e.message());
+    }
+    return mondoc::Error::generic("ai unknown error");
+}
+
+std::vector<mondoc::adapters::ai::AiFillSourceDoc>
+translateSources(const std::vector<mondoc::services::AiFillSourceInput>& in) {
+    std::vector<mondoc::adapters::ai::AiFillSourceDoc> out;
+    out.reserve(in.size());
+    for (const auto& s : in) {
+        out.push_back({s.id_, s.title_, s.text_});
+    }
+    return out;
 }
 
 mondoc::expected<std::string, mondoc::Error>
@@ -154,8 +178,11 @@ extractDocxText(const std::filesystem::path& path) {
 
 FillSessionService::FillSessionService(
     mondoc::domain::IFillSessionRepository& sessionRepo,
-    mondoc::domain::ITemplateRepository& templateRepo) noexcept
-    : sessionRepo_(sessionRepo), templateRepo_(templateRepo) {}
+    mondoc::domain::ITemplateRepository& templateRepo,
+    mondoc::adapters::ai::AiFillPipeline* aiPipeline) noexcept
+    : sessionRepo_(sessionRepo),
+      templateRepo_(templateRepo),
+      aiPipeline_(aiPipeline) {}
 
 mondoc::expected<mondoc::FillSessionId, mondoc::Error>
 FillSessionService::openSession(const mondoc::TemplateId& templateId) {
@@ -178,6 +205,121 @@ FillSessionService::setFieldValue(const mondoc::FillSessionId& sessionId,
                                    const mondoc::FieldId& fieldId,
                                    const std::string& value) {
     return sessionRepo_.upsertValue(sessionId, fieldId, value);
+}
+
+mondoc::expected<std::vector<mondoc::domain::Fill>, mondoc::Error>
+FillSessionService::aiFill(const mondoc::FillSessionId& sessionId,
+                           const std::vector<AiFillSourceInput>& sources,
+                           const std::string& freeFormText,
+                           const std::atomic<bool>& cancelled) {
+    if (!aiPipeline_) {
+        return mondoc::unexpected(
+            mondoc::Error::invalidArgument("AI not configured"));
+    }
+    auto sessionRes = sessionRepo_.findById(sessionId);
+    if (!sessionRes) return mondoc::unexpected(sessionRes.error());
+    auto tplRes = templateRepo_.findById(sessionRes->template_id_);
+    if (!tplRes) return mondoc::unexpected(tplRes.error());
+
+    mondoc::adapters::ai::RunInput runInput;
+    runInput.tpl_           = &(*tplRes);
+    runInput.free_form_text_ = freeFormText;
+    runInput.sources_       = translateSources(sources);
+
+    auto pipeResult = aiPipeline_->run(runInput, cancelled);
+    if (!pipeResult) {
+        return mondoc::unexpected(llmErrorToError(pipeResult.error()));
+    }
+
+    std::vector<mondoc::domain::Fill> out;
+    out.reserve(pipeResult->size());
+    for (const auto& aiFill : *pipeResult) {
+        const mondoc::domain::Fill* existing = nullptr;
+        for (const auto& f : sessionRes->fills_) {
+            if (f.field_id_ == aiFill.field_id_) {
+                existing = &f;
+                break;
+            }
+        }
+        if (existing &&
+            existing->confidence_ == mondoc::domain::Confidence::Manual &&
+            !existing->current_value_.empty()) {
+            out.push_back(*existing);
+            continue;
+        }
+        auto setVal = sessionRepo_.upsertValue(
+            sessionId, aiFill.field_id_, aiFill.current_value_);
+        if (!setVal) return mondoc::unexpected(setVal.error());
+        auto setConf = sessionRepo_.upsertConfidence(
+            sessionId, aiFill.field_id_, aiFill.confidence_);
+        if (!setConf) return mondoc::unexpected(setConf.error());
+        auto setRefs = sessionRepo_.replaceSourceRefs(
+            sessionId, aiFill.field_id_, aiFill.source_refs_);
+        if (!setRefs) return mondoc::unexpected(setRefs.error());
+        out.push_back(aiFill);
+    }
+    return out;
+}
+
+mondoc::expected<std::vector<mondoc::domain::Fill>, mondoc::Error>
+FillSessionService::refineField(
+        const mondoc::FillSessionId& sessionId,
+        const std::string& userMessage,
+        const std::vector<AiFillSourceInput>& sources,
+        const std::vector<AiExtractedFact>& /*lastPass1Facts*/) {
+    if (!aiPipeline_) {
+        return mondoc::unexpected(
+            mondoc::Error::invalidArgument("AI not configured"));
+    }
+    auto sessionRes = sessionRepo_.findById(sessionId);
+    if (!sessionRes) return mondoc::unexpected(sessionRes.error());
+    auto tplRes = templateRepo_.findById(sessionRes->template_id_);
+    if (!tplRes) return mondoc::unexpected(tplRes.error());
+
+    mondoc::adapters::ai::RefineInput refineInput;
+    refineInput.tpl_           = &(*tplRes);
+    refineInput.sources_       = translateSources(sources);
+    refineInput.current_fills_ = sessionRes->fills_;
+    refineInput.user_message_  = userMessage;
+
+    auto pipeResult = aiPipeline_->refine(refineInput);
+    if (!pipeResult) {
+        return mondoc::unexpected(llmErrorToError(pipeResult.error()));
+    }
+
+    std::vector<mondoc::domain::Fill> out;
+    out.reserve(pipeResult->size());
+    for (const auto& upd : *pipeResult) {
+        const mondoc::domain::Fill* existing = nullptr;
+        for (const auto& f : sessionRes->fills_) {
+            if (f.field_id_ == upd.field_id_) {
+                existing = &f;
+                break;
+            }
+        }
+        if (existing &&
+            existing->confidence_ == mondoc::domain::Confidence::Manual &&
+            !existing->current_value_.empty()) {
+            continue;
+        }
+        auto setVal = sessionRepo_.upsertValue(
+            sessionId, upd.field_id_, upd.current_value_);
+        if (!setVal) return mondoc::unexpected(setVal.error());
+        auto setConf = sessionRepo_.upsertConfidence(
+            sessionId, upd.field_id_, upd.confidence_);
+        if (!setConf) return mondoc::unexpected(setConf.error());
+        out.push_back(upd);
+    }
+    return out;
+}
+
+std::optional<AiFailureKind> classifyAiFailure(const mondoc::Error& e) {
+    const auto& m = e.message();
+    if (m.rfind("ai cancelled", 0) == 0)    return AiFailureKind::Cancelled;
+    if (m.rfind("ai unreachable", 0) == 0)  return AiFailureKind::Unreachable;
+    if (m.rfind("ai rate-limited", 0) == 0) return AiFailureKind::RateLimited;
+    if (m.rfind("ai bad response", 0) == 0) return AiFailureKind::BadResponse;
+    return std::nullopt;
 }
 
 mondoc::expected<std::vector<mondoc::domain::FillSession>, mondoc::Error>

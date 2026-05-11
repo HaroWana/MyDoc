@@ -1,15 +1,24 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
+#include <queue>
 #include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
+#include "ai_fill_pipeline.hpp"
 #include "fill_session_service.hpp"
+#include "i_llm_client.hpp"
+#include "llm_config.hpp"
+#include "llm_error.hpp"
 #include "domain/field.hpp"
 #include "domain/fill.hpp"
 #include "domain/fill_session.hpp"
@@ -33,6 +42,13 @@ using mondoc::domain::FillStatus;
 using mondoc::domain::IFillSessionRepository;
 using mondoc::domain::ITemplateRepository;
 using mondoc::domain::Template;
+using mondoc::adapters::ai::AiFillPipeline;
+using mondoc::adapters::ai::ILlmClient;
+using mondoc::adapters::ai::LlmConfig;
+using mondoc::adapters::ai::LlmError;
+using mondoc::services::AiFailureKind;
+using mondoc::services::AiFillSourceInput;
+using mondoc::services::classifyAiFailure;
 using mondoc::services::ExportFormat;
 using mondoc::services::FillSessionService;
 
@@ -193,6 +209,72 @@ FillSession makeSession(const std::string& id,
     s.created_at_unix_ = 1;
     s.updated_at_unix_ = 1;
     return s;
+}
+
+class FakeLlmClient : public ILlmClient {
+public:
+    std::queue<mondoc::expected<std::string, LlmError>> responses_;
+    std::vector<std::string> chatCalls_;
+    std::function<void()> onAfterCall_;
+
+    void enqueueOk(std::string body) { responses_.emplace(std::move(body)); }
+    void enqueueErr(LlmError e) {
+        responses_.emplace(mondoc::unexpected<LlmError>(std::move(e)));
+    }
+
+    mondoc::expected<std::string, LlmError> chat(const std::string& body) override {
+        chatCalls_.push_back(body);
+        if (responses_.empty()) {
+            if (onAfterCall_) onAfterCall_();
+            return mondoc::unexpected<LlmError>(LlmError::unreachable("fake exhausted"));
+        }
+        auto r = std::move(responses_.front());
+        responses_.pop();
+        if (onAfterCall_) onAfterCall_();
+        return r;
+    }
+};
+
+std::string makeChatCompletion(const nlohmann::json& contentJson) {
+    nlohmann::json envelope = {
+        {"choices", nlohmann::json::array({
+            nlohmann::json{{"message", nlohmann::json{{"content", contentJson.dump()}}}}
+        })}
+    };
+    return envelope.dump();
+}
+
+LlmConfig minimalConfig() {
+    return LlmConfig{"https://hub.example/v1", "sk-test", "gpt-4o-2026"};
+}
+
+Template aiThreeFieldTpl() {
+    Template t;
+    t.id_   = TemplateId{"tpl-ai"};
+    t.name_ = "ai";
+    t.fields_ = {
+        Field{FieldId{"f1"}, "name",  FieldType::Text},
+        Field{FieldId{"f2"}, "dob",   FieldType::Date},
+        Field{FieldId{"f3"}, "score", FieldType::Number},
+    };
+    return t;
+}
+
+std::string canonicalPass1() {
+    return makeChatCompletion(nlohmann::json{
+        {"facts", nlohmann::json::array()}});
+}
+
+std::string canonicalPass2() {
+    return makeChatCompletion(nlohmann::json{
+        {"fills", nlohmann::json::array({
+            nlohmann::json{{"field_id","f1"},{"value","John"},
+                           {"confidence","high"},{"fact_index",-1}},
+            nlohmann::json{{"field_id","f2"},{"value","1985-03-12"},
+                           {"confidence","medium"},{"fact_index",-1}},
+            nlohmann::json{{"field_id","f3"},{"value","95"},
+                           {"confidence","low"},{"fact_index",-1}},
+        })}});
 }
 
 }  // namespace
@@ -412,13 +494,216 @@ TEST_CASE("FillSessionService: readSourceText returns invalidArgument for unsupp
     REQUIRE(r.error().kind() == mondoc::Error::Kind::InvalidArgument);
 }
 
-TEST_CASE("FillSessionService: REVW-05 stickiness — no AI overwrite path in Phase 2 surface",
-          "[services.fill_session]") {
-    // Phase 2 public surface (verify by inspection of fill_session_service.hpp):
-    //   - openSession, setFieldValue, listDrafts, resumeSession,
-    //     discardSession, exportSession, readSourceText
-    // None of these overwrite an existing fill value automatically.
-    // setFieldValue is the only mutation path and is driven by user input.
-    // Phase 3 will introduce AI fill paths that must respect a sticky flag.
-    SUCCEED("Phase 2 has no AI overwrite path; REVW-05 satisfied trivially");
+TEST_CASE("FillSessionService::aiFill: nullptr pipeline returns InvalidArgument",
+          "[services.fill_session][adapters.ai]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing);
+
+    FillSessionService svc{fillRepo, tplRepo};
+    std::atomic<bool> cancelled{false};
+    auto r = svc.aiFill(FillSessionId{"s1"}, {}, "", cancelled);
+
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().kind() == mondoc::Error::Kind::InvalidArgument);
+}
+
+TEST_CASE("FillSessionService::aiFill: happy path persists Fills and returns them",
+          "[services.fill_session][adapters.ai]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing);
+
+    FakeLlmClient fake;
+    fake.enqueueOk(canonicalPass1());
+    fake.enqueueOk(canonicalPass2());
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    std::atomic<bool> cancelled{false};
+    auto r = svc.aiFill(FillSessionId{"s1"}, {}, "", cancelled);
+
+    REQUIRE(r.has_value());
+    REQUIRE(r->size() == 3);
+    REQUIRE((*r)[0].current_value_ == "John");
+    REQUIRE((*r)[0].confidence_ == Confidence::High);
+    REQUIRE(fillRepo.upsertCalls_.size() == 3);
+    const auto& stored = fillRepo.store_["s1"].fills_;
+    REQUIRE(stored.size() == 3);
+    auto valueOf = [&](const std::string& fid) {
+        for (const auto& f : stored)
+            if (f.field_id_.value() == fid) return f.current_value_;
+        return std::string{};
+    };
+    REQUIRE(valueOf("f1") == "John");
+    REQUIRE(valueOf("f2") == "1985-03-12");
+    REQUIRE(valueOf("f3") == "95");
+}
+
+TEST_CASE("FillSessionService::aiFill: manual-sticky fill is preserved (REVW-05)",
+          "[services.fill_session][adapters.ai][revw-05]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+
+    Fill manual;
+    manual.field_id_      = FieldId{"f1"};
+    manual.current_value_ = "user typed";
+    manual.confidence_    = Confidence::Manual;
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing,
+                                        {manual});
+
+    FakeLlmClient fake;
+    fake.enqueueOk(canonicalPass1());
+    fake.enqueueOk(canonicalPass2());
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    std::atomic<bool> cancelled{false};
+    auto r = svc.aiFill(FillSessionId{"s1"}, {}, "", cancelled);
+
+    REQUIRE(r.has_value());
+    REQUIRE(r->size() == 3);
+    const Fill* outF1 = nullptr;
+    for (const auto& f : *r) {
+        if (f.field_id_.value() == "f1") { outF1 = &f; break; }
+    }
+    REQUIRE(outF1 != nullptr);
+    REQUIRE(outF1->current_value_ == "user typed");
+    REQUIRE(outF1->confidence_ == Confidence::Manual);
+
+    for (const auto& c : fillRepo.upsertCalls_) {
+        REQUIRE(c.fieldId != "f1");
+    }
+}
+
+TEST_CASE("FillSessionService::aiFill: LlmError::Cancelled classifies as Cancelled",
+          "[services.fill_session][adapters.ai][revw-08]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing);
+
+    FakeLlmClient fake;
+    fake.enqueueOk(canonicalPass1());
+    std::atomic<bool> cancelled{false};
+    fake.onAfterCall_ = [&] { cancelled.store(true); };
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    auto r = svc.aiFill(FillSessionId{"s1"}, {}, "", cancelled);
+
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(classifyAiFailure(r.error()) == AiFailureKind::Cancelled);
+    REQUIRE(fillRepo.upsertCalls_.empty());
+}
+
+TEST_CASE("FillSessionService::aiFill: LlmError::Unreachable classifies as Unreachable",
+          "[services.fill_session][adapters.ai][app-06]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing);
+
+    FakeLlmClient fake;
+    fake.enqueueErr(LlmError::unreachable("offline"));
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    std::atomic<bool> cancelled{false};
+    auto r = svc.aiFill(FillSessionId{"s1"}, {}, "", cancelled);
+
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(classifyAiFailure(r.error()) == AiFailureKind::Unreachable);
+}
+
+TEST_CASE("FillSessionService::refineField: nullptr pipeline returns InvalidArgument",
+          "[services.fill_session][adapters.ai]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing);
+
+    FillSessionService svc{fillRepo, tplRepo};
+    auto r = svc.refineField(FillSessionId{"s1"}, "hi", {}, {});
+
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().kind() == mondoc::Error::Kind::InvalidArgument);
+}
+
+TEST_CASE("FillSessionService::refineField: happy path persists only updated fields",
+          "[services.fill_session][adapters.ai][fill-06]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+
+    Fill f1; f1.field_id_ = FieldId{"f1"};
+    f1.current_value_ = "old"; f1.confidence_ = Confidence::High;
+    Fill f2; f2.field_id_ = FieldId{"f2"};
+    f2.current_value_ = "1985-03-12"; f2.confidence_ = Confidence::Medium;
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing, {f1, f2});
+
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"updates", nlohmann::json::array({
+            nlohmann::json{{"field_id","f1"},{"value","new"},{"confidence","high"}},
+        })}}));
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    auto r = svc.refineField(FillSessionId{"s1"}, "rename", {}, {});
+
+    REQUIRE(r.has_value());
+    REQUIRE(r->size() == 1);
+    REQUIRE((*r)[0].field_id_.value() == "f1");
+    REQUIRE((*r)[0].current_value_ == "new");
+    REQUIRE(fillRepo.upsertCalls_.size() == 1);
+    REQUIRE(fillRepo.upsertCalls_[0].fieldId == "f1");
+    REQUIRE(fillRepo.store_["s1"].fills_.size() == 2);
+    auto valueOf = [&](const std::string& fid) {
+        for (const auto& f : fillRepo.store_["s1"].fills_)
+            if (f.field_id_.value() == fid) return f.current_value_;
+        return std::string{};
+    };
+    REQUIRE(valueOf("f1") == "new");
+    REQUIRE(valueOf("f2") == "1985-03-12");
+}
+
+TEST_CASE("FillSessionService::refineField: manual-sticky fill is preserved (REVW-05)",
+          "[services.fill_session][adapters.ai][revw-05]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+
+    Fill manual;
+    manual.field_id_      = FieldId{"f1"};
+    manual.current_value_ = "user typed";
+    manual.confidence_    = Confidence::Manual;
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing, {manual});
+
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"updates", nlohmann::json::array({
+            nlohmann::json{{"field_id","f1"},{"value","ai value"},{"confidence","high"}},
+        })}}));
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    auto r = svc.refineField(FillSessionId{"s1"}, "override", {}, {});
+
+    REQUIRE(r.has_value());
+    REQUIRE(r->empty());
+    REQUIRE(fillRepo.upsertCalls_.empty());
+    REQUIRE(fillRepo.store_["s1"].fills_[0].current_value_ == "user typed");
+    REQUIRE(fillRepo.store_["s1"].fills_[0].confidence_ == Confidence::Manual);
 }
