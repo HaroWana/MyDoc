@@ -8,6 +8,7 @@ target_link_libraries(mondoc_app PRIVATE
     mondoc_ui
     mondoc_services
     mondoc_adapters_storage
+    mondoc_adapters_ai
     mondoc_domain
 )
 

@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <utility>
 
+#include "ai_fill_worker.hpp"
+#include "chat_pane.hpp"
 #include "composition_root.hpp"
 #include "main_window.hpp"
 #include "migrations.hpp"
@@ -17,6 +19,9 @@ int main(int argc, char* argv[]) {
     QApplication::setApplicationName(QStringLiteral("mondoc"));
     QApplication::setOrganizationName(QStringLiteral("mondoc"));
     QApplication::setStyle(QStringLiteral("fusion"));
+
+    qRegisterMetaType<std::vector<mondoc::domain::Fill>>();
+    qRegisterMetaType<std::vector<mondoc::services::AiExtractedFact>>();
 
     const QString appDataDirQs =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -46,7 +51,19 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    mondoc::app::CompositionRoot root{std::move(*connResult)};
+    const QString configDirQs =
+        QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    const std::filesystem::path configPath =
+        std::filesystem::path{configDirQs.toStdU16String()} / "config.json";
+    auto cfgResult = mondoc::adapters::ai::LlmConfig::loadFromJson(configPath);
+    if (!cfgResult) {
+        QMessageBox::critical(nullptr, QStringLiteral("MonDoc"),
+            QObject::tr("Cannot load AI configuration: %1")
+                .arg(QString::fromStdString(cfgResult.error().message())));
+        return 1;
+    }
+
+    mondoc::app::CompositionRoot root{std::move(*connResult), std::move(*cfgResult)};
     mondoc::ui::MainWindow window{root.service_,
                                   root.fill_session_service_,
                                   root.repo_};

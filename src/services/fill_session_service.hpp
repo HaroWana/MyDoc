@@ -48,6 +48,8 @@ public:
                        mondoc::domain::ITemplateRepository& templateRepo,
                        mondoc::adapters::ai::AiFillPipeline* aiPipeline = nullptr) noexcept;
 
+    bool isAiConfigured() const noexcept { return aiPipeline_ != nullptr; }
+
     mondoc::expected<mondoc::FillSessionId, mondoc::Error>
     openSession(const mondoc::TemplateId& templateId);
 
