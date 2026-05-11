@@ -256,3 +256,112 @@ TEST_CASE("run: Pass 2 LlmError propagates",
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().kind() == LlmError::Kind::RateLimited);
 }
+
+TEST_CASE("refine: returns only the fields named in the LLM response",
+          "[adapters.ai][pipeline][refine]") {
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"updates", nlohmann::json::array({
+            nlohmann::json{{"field_id","f1"},{"value","new"},{"confidence","high"}},
+        })}
+    }));
+
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RefineInput in;
+    in.tpl_ = &tpl;
+    in.sources_ = oneSource();
+    in.current_fills_ = {
+        Fill{FieldId{"f1"}, "old", Confidence::High,   {}},
+        Fill{FieldId{"f2"}, "old", Confidence::Medium, {}},
+        Fill{FieldId{"f3"}, "old", Confidence::Low,    {}},
+    };
+    in.user_message_ = "make name new";
+
+    auto result = pipe.refine(in);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->size() == 1);
+    REQUIRE((*result)[0].field_id_.value() == "f1");
+    REQUIRE((*result)[0].current_value_ == "new");
+    REQUIRE((*result)[0].confidence_ == Confidence::High);
+    REQUIRE(fake.chatCalls_.size() == 1);
+}
+
+TEST_CASE("refine: empty updates array returns empty vector",
+          "[adapters.ai][pipeline][refine]") {
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"updates", nlohmann::json::array()}
+    }));
+
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RefineInput in;
+    in.tpl_ = &tpl;
+    in.sources_ = oneSource();
+    in.user_message_ = "no-op";
+
+    auto result = pipe.refine(in);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->empty());
+}
+
+TEST_CASE("refine: normalizes date format on update",
+          "[adapters.ai][pipeline][refine][fill-09]") {
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"updates", nlohmann::json::array({
+            nlohmann::json{{"field_id","f2"},{"value","1985-3-12"},{"confidence","medium"}},
+        })}
+    }));
+
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RefineInput in;
+    in.tpl_ = &tpl;
+    in.sources_ = oneSource();
+    in.user_message_ = "format date";
+
+    auto result = pipe.refine(in);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->size() == 1);
+    REQUIRE((*result)[0].current_value_ == "1985-03-12");
+}
+
+TEST_CASE("refine: empty user_message returns BadResponse without chat call",
+          "[adapters.ai][pipeline][refine]") {
+    FakeLlmClient fake;
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RefineInput in;
+    in.tpl_ = &tpl;
+    in.user_message_ = "";
+
+    auto result = pipe.refine(in);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::BadResponse);
+    REQUIRE(fake.chatCalls_.empty());
+}
+
+TEST_CASE("refine: LLM error propagates and only one chat call is made (Pitfall 5)",
+          "[adapters.ai][pipeline][refine]") {
+    FakeLlmClient fake;
+    fake.enqueueErr(LlmError::unreachable("offline"));
+
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RefineInput in;
+    in.tpl_ = &tpl;
+    in.sources_ = oneSource();
+    in.user_message_ = "anything";
+
+    auto result = pipe.refine(in);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::Unreachable);
+    REQUIRE(fake.chatCalls_.size() == 1);
+}
