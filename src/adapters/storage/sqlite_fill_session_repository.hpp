@@ -29,6 +29,16 @@ public:
                     const mondoc::FieldId& fieldId,
                     const std::string& value) override;
 
+    mondoc::expected<void, mondoc::Error>
+        upsertConfidence(const mondoc::FillSessionId& sessionId,
+                         const mondoc::FieldId& fieldId,
+                         mondoc::domain::Confidence confidence) override;
+
+    mondoc::expected<void, mondoc::Error>
+        replaceSourceRefs(const mondoc::FillSessionId& sessionId,
+                          const mondoc::FieldId& fieldId,
+                          const std::vector<mondoc::domain::SourceRef>& refs) override;
+
 private:
     SqliteConnection& conn_;
 };

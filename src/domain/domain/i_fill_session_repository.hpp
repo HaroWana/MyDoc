@@ -4,7 +4,9 @@
 #include "mondoc/expected.hpp"
 #include "mondoc/error.hpp"
 #include "mondoc/id.hpp"
+#include "confidence.hpp"
 #include "fill_session.hpp"
+#include "source_ref.hpp"
 
 namespace mondoc::domain {
 
@@ -28,6 +30,16 @@ public:
         upsertValue(const mondoc::FillSessionId& sessionId,
                     const mondoc::FieldId& fieldId,
                     const std::string& value) = 0;
+
+    virtual mondoc::expected<void, mondoc::Error>
+        upsertConfidence(const mondoc::FillSessionId& sessionId,
+                         const mondoc::FieldId& fieldId,
+                         Confidence confidence) = 0;
+
+    virtual mondoc::expected<void, mondoc::Error>
+        replaceSourceRefs(const mondoc::FillSessionId& sessionId,
+                          const mondoc::FieldId& fieldId,
+                          const std::vector<SourceRef>& refs) = 0;
 };
 
 }  // namespace mondoc::domain
