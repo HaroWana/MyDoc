@@ -4,11 +4,14 @@
 #include <QComboBox>
 #include <QDate>
 #include <QDateEdit>
+#include <QEvent>
 #include <QFontDatabase>
 #include <QIntValidator>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMouseEvent>
 #include <QScrollArea>
+#include <QSignalBlocker>
 #include <QString>
 #include <QTextEdit>
 #include <QTimer>
@@ -60,6 +63,9 @@ void FieldFormPane::rebuildFormHost() {
 void FieldFormPane::clear() {
     lastCommitted_.clear();
     textEditTimers_.clear();
+    sourceRefsByField_.clear();
+    inputToFieldId_.clear();
+    inputByField_.clear();
     rebuildFormHost();
 }
 
@@ -82,19 +88,23 @@ void FieldFormPane::populate(const mondoc::domain::Template& tpl,
 
     for (const auto& field : tpl.fields_) {
         QString initial;
+        mondoc::domain::Confidence initialConfidence = mondoc::domain::Confidence::Manual;
         for (const auto& fill : session.fills_) {
             if (fill.field_id_ == field.id_) {
                 initial = QString::fromStdString(fill.current_value_);
+                initialConfidence = fill.confidence_;
+                sourceRefsByField_[field.id_.value()] = fill.source_refs_;
                 break;
             }
         }
-        buildRow(field, initial);
+        buildRow(field, initial, initialConfidence);
         lastCommitted_[field.id_.value()] = initial;
     }
 }
 
 void FieldFormPane::buildRow(const mondoc::domain::Field& field,
-                             const QString& initialValue) {
+                             const QString& initialValue,
+                             mondoc::domain::Confidence initialConfidence) {
     auto* rowContainer = new QWidget(form_);
     auto* rowLayout = new QVBoxLayout(rowContainer);
     rowLayout->setContentsMargins(0, 0, 0, 0);
@@ -159,6 +169,9 @@ void FieldFormPane::buildRow(const mondoc::domain::Field& field,
     if (!input) return;
 
     input->setAccessibleName(displayName);
+    input->installEventFilter(this);
+    inputToFieldId_[input] = field.id_;
+    inputByField_[field.id_.value()] = input;
 
     if (field.type_ != FieldType::Checkbox) {
         auto* nameLabel = new QLabel(displayName, rowContainer);
@@ -170,7 +183,7 @@ void FieldFormPane::buildRow(const mondoc::domain::Field& field,
     if (!initialValue.isEmpty() ||
         (field.type_ == FieldType::Checkbox &&
          initialValue == QStringLiteral("true"))) {
-        markFilled(input);
+        markFilled(input, initialConfidence);
     }
 
     const mondoc::FieldId fieldId = field.id_;
@@ -233,12 +246,69 @@ void FieldFormPane::commit(const mondoc::FieldId& fieldId,
                                      displayName);
     undoStack_->push(cmd);
     lastCommitted_[key] = newValue;
-    markFilled(input);
+    markFilled(input, mondoc::domain::Confidence::Manual);
+    sourceRefsByField_[key].clear();
 }
 
-void FieldFormPane::markFilled(QWidget* input) {
+void FieldFormPane::markFilled(QWidget* input, mondoc::domain::Confidence c) {
     if (!input) return;
-    input->setStyleSheet(QStringLiteral("border: 1px solid #2563EB;"));
+    using mondoc::domain::Confidence;
+    QString border;
+    switch (c) {
+        case Confidence::High:   border = QStringLiteral("border: 1px solid #22C55E;"); break;
+        case Confidence::Medium: border = QStringLiteral("border: 1px solid #F59E0B;"); break;
+        case Confidence::Low:    border = QStringLiteral("border: 1px solid #DC2626;"); break;
+        case Confidence::Manual: border = QStringLiteral("border: 1px solid #2563EB;"); break;
+    }
+    input->setStyleSheet(border);
+}
+
+void FieldFormPane::populateAi(const std::vector<mondoc::domain::Fill>& fills) {
+    using mondoc::domain::Confidence;
+    for (const auto& f : fills) {
+        if (f.confidence_ == Confidence::Manual) continue;
+        auto it = inputByField_.find(f.field_id_.value());
+        if (it == inputByField_.end()) continue;
+        QWidget* input = it->second;
+        const QString value = QString::fromStdString(f.current_value_);
+
+        {
+            QSignalBlocker blocker(input);
+            if (auto* le = qobject_cast<QLineEdit*>(input))
+                le->setText(value);
+            else if (auto* te = qobject_cast<QTextEdit*>(input))
+                te->setPlainText(value);
+            else if (auto* de = qobject_cast<QDateEdit*>(input)) {
+                QDate d = QDate::fromString(value, QStringLiteral("yyyy-MM-dd"));
+                if (d.isValid()) de->setDate(d);
+            } else if (auto* cb = qobject_cast<QCheckBox*>(input))
+                cb->setChecked(value == QStringLiteral("true"));
+            else if (auto* combo = qobject_cast<QComboBox*>(input)) {
+                if (combo->findText(value) < 0) combo->addItem(value);
+                combo->setCurrentText(value);
+            }
+        }
+
+        markFilled(input, f.confidence_);
+        sourceRefsByField_[f.field_id_.value()] = f.source_refs_;
+        lastCommitted_[f.field_id_.value()] = value;
+    }
+}
+
+bool FieldFormPane::eventFilter(QObject* obj, QEvent* ev) {
+    if (ev->type() == QEvent::MouseButtonRelease) {
+        auto* me = static_cast<QMouseEvent*>(ev);
+        if (me->button() == Qt::LeftButton) {
+            auto it = inputToFieldId_.find(obj);
+            if (it != inputToFieldId_.end()) {
+                auto refs = sourceRefsByField_.find(it->second.value());
+                if (refs != sourceRefsByField_.end() && !refs->second.empty()) {
+                    emit sourceRefRequested(refs->second.front());
+                }
+            }
+        }
+    }
+    return false;
 }
 
 }  // namespace mondoc::ui

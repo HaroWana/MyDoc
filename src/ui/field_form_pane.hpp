@@ -3,7 +3,11 @@
 #include <QString>
 #include <QWidget>
 #include <unordered_map>
+#include <vector>
 
+#include "domain/confidence.hpp"
+#include "domain/fill.hpp"
+#include "domain/source_ref.hpp"
 #include "domain/template.hpp"
 #include "domain/fill_session.hpp"
 #include "fill_session_service.hpp"
@@ -29,9 +33,18 @@ public:
 
     void clear();
 
+public slots:
+    void populateAi(const std::vector<mondoc::domain::Fill>& fills);
+
+signals:
+    void sourceRefRequested(mondoc::domain::SourceRef ref);
+
 private:
-    void buildRow(const mondoc::domain::Field& field, const QString& initialValue);
-    void markFilled(QWidget* input);
+    bool eventFilter(QObject* obj, QEvent* ev) override;
+    void buildRow(const mondoc::domain::Field& field,
+                  const QString& initialValue,
+                  mondoc::domain::Confidence initialConfidence);
+    void markFilled(QWidget* input, mondoc::domain::Confidence c);
     void commit(const mondoc::FieldId& fieldId,
                 QWidget* input,
                 const QString& fieldDisplayName,
@@ -46,6 +59,9 @@ private:
     mondoc::FillSessionId sessionId_;
     std::unordered_map<std::string, QString> lastCommitted_;
     std::unordered_map<std::string, QTimer*> textEditTimers_;
+    std::unordered_map<std::string, std::vector<mondoc::domain::SourceRef>> sourceRefsByField_;
+    std::unordered_map<QObject*, mondoc::FieldId> inputToFieldId_;
+    std::unordered_map<std::string, QWidget*> inputByField_;
 };
 
 }  // namespace mondoc::ui

@@ -170,7 +170,7 @@ bool FillSessionView::openSession(const mondoc::FillSessionId& id,
 void FillSessionView::clearSession() {
     undoStack_->clear();
     fieldPane_->clear();
-    sourcePane_->setSourceTexts({});
+    sourcePane_->setSourceTexts(std::vector<std::pair<QString, QString>>{});
     templateNameLabel_->clear();
     currentSessionId_ = mondoc::FillSessionId{};
     currentTemplateId_ = mondoc::TemplateId{};
