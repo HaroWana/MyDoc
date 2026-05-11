@@ -13,8 +13,25 @@ inline constexpr std::string_view kPass1SystemPrompt =
     "short summary. Do NOT paraphrase the excerpt — copy it byte-for-byte. "
     "Return only JSON matching the supplied schema.";
 
-std::string buildPass1UserPrompt(const std::vector<AiFillSourceDoc>& sources,
-                                 const std::string& freeFormText);
+inline std::string buildPass1UserPrompt(const std::vector<AiFillSourceDoc>& sources,
+                                        const std::string& freeFormText) {
+    std::string out = "Source documents:\n";
+    for (std::size_t i = 0; i < sources.size(); ++i) {
+        out += "\n--- Source ";
+        out += std::to_string(i);
+        out += ": ";
+        out += sources[i].title_;
+        out += " ---\n";
+        out += sources[i].text_;
+        out += "\n";
+    }
+    if (!freeFormText.empty()) {
+        out += "\nAdditional free-form text from user:\n";
+        out += freeFormText;
+        out += "\n";
+    }
+    return out;
+}
 
 inline constexpr std::string_view kPass1JsonSchema = R"JSON({
   "type": "object",
