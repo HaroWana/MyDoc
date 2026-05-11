@@ -7,6 +7,8 @@
 #include <string>
 #include <utility>
 
+#include "domain/confidence.hpp"
+#include "domain/source_ref.hpp"
 #include "migrations.hpp"
 #include "sqlite_connection.hpp"
 #include "sqlite_fill_session_repository.hpp"
@@ -14,10 +16,14 @@
 using namespace mondoc::adapters::storage;
 using mondoc::FieldId;
 using mondoc::FillSessionId;
+using mondoc::SourceDocId;
 using mondoc::TemplateId;
+using mondoc::domain::Confidence;
 using mondoc::domain::Fill;
 using mondoc::domain::FillSession;
 using mondoc::domain::FillStatus;
+using mondoc::domain::SourceRef;
+using mondoc::domain::TextRange;
 
 namespace {
 
@@ -227,4 +233,170 @@ TEST_CASE("SqliteFillSessionRepository: all six FillStatus variants round-trip",
         REQUIRE(loaded.has_value());
         REQUIRE(loaded->status_ == st);
     }
+}
+
+TEST_CASE("save + findById round-trips Confidence::High",
+          "[adapters.storage][fill_session_repo][phase03]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+
+    auto s = makeSession("s1");
+    Fill f;
+    f.field_id_      = FieldId{"name"};
+    f.current_value_ = "John Doe";
+    f.confidence_    = Confidence::High;
+    s.fills_.push_back(std::move(f));
+    REQUIRE(repo.save(s).has_value());
+
+    auto loaded = repo.findById(FillSessionId{"s1"});
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->fills_.size() == 1);
+    REQUIRE(loaded->fills_[0].confidence_ == Confidence::High);
+    REQUIRE(loaded->fills_[0].current_value_ == "John Doe");
+    REQUIRE(loaded->fills_[0].source_refs_.empty());
+}
+
+TEST_CASE("save + findById round-trips source refs in order",
+          "[adapters.storage][fill_session_repo][phase03]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+
+    auto s = makeSession("s1");
+    Fill f;
+    f.field_id_      = FieldId{"name"};
+    f.current_value_ = "John Doe";
+    f.confidence_    = Confidence::Medium;
+    f.source_refs_.push_back(SourceRef{SourceDocId{"src-a"}, TextRange{12, 20}, "John Doe"});
+    f.source_refs_.push_back(SourceRef{SourceDocId{"src-b"}, TextRange{100, 110}, "Sept 2020"});
+    s.fills_.push_back(std::move(f));
+    REQUIRE(repo.save(s).has_value());
+
+    auto loaded = repo.findById(FillSessionId{"s1"});
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->fills_.size() == 1);
+    REQUIRE(loaded->fills_[0].source_refs_.size() == 2);
+    REQUIRE(loaded->fills_[0].source_refs_[0].source_id_.value() == "src-a");
+    REQUIRE(loaded->fills_[0].source_refs_[0].range_.begin_ == 12);
+    REQUIRE(loaded->fills_[0].source_refs_[0].range_.end_ == 20);
+    REQUIRE(loaded->fills_[0].source_refs_[0].excerpt_ == "John Doe");
+    REQUIRE(loaded->fills_[0].source_refs_[1].source_id_.value() == "src-b");
+    REQUIRE(loaded->fills_[0].source_refs_[1].range_.begin_ == 100);
+}
+
+TEST_CASE("upsertConfidence after upsertValue updates row in place",
+          "[adapters.storage][fill_session_repo][phase03]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+
+    REQUIRE(repo.save(makeSession("s1")).has_value());
+    REQUIRE(repo.upsertValue(FillSessionId{"s1"}, FieldId{"f1"}, "manual value").has_value());
+    REQUIRE(repo.upsertConfidence(FillSessionId{"s1"}, FieldId{"f1"}, Confidence::Medium).has_value());
+
+    auto loaded = repo.findById(FillSessionId{"s1"});
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->fills_.size() == 1);
+    REQUIRE(loaded->fills_[0].current_value_ == "manual value");
+    REQUIRE(loaded->fills_[0].confidence_ == Confidence::Medium);
+}
+
+TEST_CASE("replaceSourceRefs deletes prior refs before insert",
+          "[adapters.storage][fill_session_repo][phase03]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+
+    auto s = makeSession("s1");
+    Fill f;
+    f.field_id_      = FieldId{"name"};
+    f.current_value_ = "John";
+    f.source_refs_.push_back(SourceRef{SourceDocId{"src-a"}, TextRange{0, 4}, "John"});
+    f.source_refs_.push_back(SourceRef{SourceDocId{"src-b"}, TextRange{10, 14}, "Doe!"});
+    f.source_refs_.push_back(SourceRef{SourceDocId{"src-c"}, TextRange{20, 24}, "Jane"});
+    s.fills_.push_back(std::move(f));
+    REQUIRE(repo.save(s).has_value());
+
+    std::vector<SourceRef> oneRef;
+    oneRef.push_back(SourceRef{SourceDocId{"src-z"}, TextRange{99, 105}, "final"});
+    REQUIRE(repo.replaceSourceRefs(FillSessionId{"s1"}, FieldId{"name"}, oneRef).has_value());
+
+    auto loaded = repo.findById(FillSessionId{"s1"});
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->fills_.size() == 1);
+    REQUIRE(loaded->fills_[0].source_refs_.size() == 1);
+    REQUIRE(loaded->fills_[0].source_refs_[0].source_id_.value() == "src-z");
+    REQUIRE(loaded->fills_[0].source_refs_[0].excerpt_ == "final");
+}
+
+TEST_CASE("listDrafts hydrates confidence and source refs for every fill",
+          "[adapters.storage][fill_session_repo][phase03]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+
+    for (const char* sid : {"s1", "s2"}) {
+        auto s = makeSession(sid);
+        for (const char* fid : {"f1", "f2"}) {
+            Fill f;
+            f.field_id_      = FieldId{fid};
+            f.current_value_ = std::string{fid} + "-val";
+            f.confidence_    = Confidence::Medium;
+            f.source_refs_.push_back(SourceRef{SourceDocId{"src"}, TextRange{0, 3}, "abc"});
+            s.fills_.push_back(std::move(f));
+        }
+        REQUIRE(repo.save(s).has_value());
+    }
+
+    auto drafts = repo.listDrafts();
+    REQUIRE(drafts.has_value());
+    REQUIRE(drafts->size() == 2);
+    for (const auto& sess : *drafts) {
+        REQUIRE(sess.fills_.size() == 2);
+        for (const auto& fill : sess.fills_) {
+            REQUIRE(fill.confidence_ == Confidence::Medium);
+            REQUIRE(fill.source_refs_.size() == 1);
+            REQUIRE(fill.source_refs_[0].excerpt_ == "abc");
+        }
+    }
+}
+
+TEST_CASE("Confidence::Manual is the default for a never-AI-touched fill",
+          "[adapters.storage][fill_session_repo][phase03]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+
+    REQUIRE(repo.save(makeSession("s1")).has_value());
+    REQUIRE(repo.upsertValue(FillSessionId{"s1"}, FieldId{"f1"}, "typed").has_value());
+
+    auto loaded = repo.findById(FillSessionId{"s1"});
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->fills_.size() == 1);
+    REQUIRE(loaded->fills_[0].confidence_ == Confidence::Manual);
+}
+
+TEST_CASE("remove cascades to fill_source_refs",
+          "[adapters.storage][fill_session_repo][phase03]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+
+    auto s = makeSession("s1");
+    Fill f;
+    f.field_id_      = FieldId{"name"};
+    f.current_value_ = "John";
+    f.source_refs_.push_back(SourceRef{SourceDocId{"src-a"}, TextRange{0, 4}, "John"});
+    s.fills_.push_back(std::move(f));
+    REQUIRE(repo.save(s).has_value());
+
+    REQUIRE(repo.remove(FillSessionId{"s1"}).has_value());
+
+    auto& db = conn->raw();
+    SQLite::Statement q(db,
+        "SELECT COUNT(*) FROM fill_source_refs WHERE session_id = ?");
+    q.bind(1, std::string{"s1"});
+    REQUIRE(q.executeStep());
+    REQUIRE(q.getColumn(0).getInt() == 0);
 }

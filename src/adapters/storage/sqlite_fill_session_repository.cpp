@@ -43,6 +43,25 @@ mondoc::domain::FillStatus stringToFillStatus(const std::string& s) {
     return FillStatus::Created;
 }
 
+std::string confidenceToString(mondoc::domain::Confidence c) {
+    using mondoc::domain::Confidence;
+    switch (c) {
+        case Confidence::High:   return "high";
+        case Confidence::Medium: return "medium";
+        case Confidence::Low:    return "low";
+        case Confidence::Manual: return "manual";
+    }
+    return "manual";
+}
+
+mondoc::domain::Confidence stringToConfidence(const std::string& s) {
+    using mondoc::domain::Confidence;
+    if (s == "high")   return Confidence::High;
+    if (s == "medium") return Confidence::Medium;
+    if (s == "low")    return Confidence::Low;
+    return Confidence::Manual;
+}
+
 }  // namespace
 
 SqliteFillSessionRepository::SqliteFillSessionRepository(SqliteConnection& conn) noexcept
@@ -78,9 +97,18 @@ SqliteFillSessionRepository::save(const mondoc::domain::FillSession& s) {
         clearVals.bind(1, s.id_.value());
         clearVals.exec();
 
+        SQLite::Statement clearRefs(db,
+            "DELETE FROM fill_source_refs WHERE session_id = ?");
+        clearRefs.bind(1, s.id_.value());
+        clearRefs.exec();
+
         SQLite::Statement insertVal(db,
-            "INSERT INTO fill_values(session_id, field_id, value, updated_at)"
-            " VALUES(?,?,?,?)");
+            "INSERT INTO fill_values(session_id, field_id, value, updated_at, confidence)"
+            " VALUES(?,?,?,?,?)");
+        SQLite::Statement insertRef(db,
+            "INSERT INTO fill_source_refs"
+            "(session_id, field_id, ref_order, source_id, char_start, char_end, excerpt)"
+            " VALUES(?,?,?,?,?,?,?)");
         for (const auto& fill : s.fills_) {
             insertVal.reset();
             insertVal.clearBindings();
@@ -88,7 +116,21 @@ SqliteFillSessionRepository::save(const mondoc::domain::FillSession& s) {
             insertVal.bind(2, fill.field_id_.value());
             insertVal.bind(3, fill.current_value_);
             insertVal.bind(4, static_cast<int64_t>(updated));
+            insertVal.bind(5, confidenceToString(fill.confidence_));
             insertVal.exec();
+
+            for (std::size_t i = 0; i < fill.source_refs_.size(); ++i) {
+                insertRef.reset();
+                insertRef.clearBindings();
+                insertRef.bind(1, s.id_.value());
+                insertRef.bind(2, fill.field_id_.value());
+                insertRef.bind(3, static_cast<int64_t>(i));
+                insertRef.bind(4, fill.source_refs_[i].source_id_.value());
+                insertRef.bind(5, fill.source_refs_[i].range_.begin_);
+                insertRef.bind(6, fill.source_refs_[i].range_.end_);
+                insertRef.bind(7, fill.source_refs_[i].excerpt_);
+                insertRef.exec();
+            }
         }
 
         tx.commit();
@@ -120,14 +162,35 @@ SqliteFillSessionRepository::findById(const mondoc::FillSessionId& id) {
         }
 
         SQLite::Statement qv(db,
-            "SELECT field_id, value FROM fill_values"
+            "SELECT field_id, value, confidence FROM fill_values"
             " WHERE session_id = ? ORDER BY field_id ASC");
         qv.bind(1, id.value());
         while (qv.executeStep()) {
             mondoc::domain::Fill f;
             f.field_id_      = mondoc::FieldId{qv.getColumn(0).getString()};
             f.current_value_ = qv.getColumn(1).getString();
+            f.confidence_    = stringToConfidence(qv.getColumn(2).getString());
             s.fills_.push_back(std::move(f));
+        }
+
+        SQLite::Statement qr(db,
+            "SELECT field_id, source_id, char_start, char_end, excerpt"
+            " FROM fill_source_refs WHERE session_id = ?"
+            " ORDER BY field_id, ref_order");
+        qr.bind(1, id.value());
+        while (qr.executeStep()) {
+            mondoc::FieldId fid{qr.getColumn(0).getString()};
+            mondoc::domain::SourceRef r;
+            r.source_id_   = mondoc::SourceDocId{qr.getColumn(1).getString()};
+            r.range_.begin_ = qr.getColumn(2).getInt64();
+            r.range_.end_   = qr.getColumn(3).getInt64();
+            r.excerpt_      = qr.getColumn(4).getString();
+            for (auto& f : s.fills_) {
+                if (f.field_id_ == fid) {
+                    f.source_refs_.push_back(std::move(r));
+                    break;
+                }
+            }
         }
 
         return s;
@@ -161,8 +224,12 @@ SqliteFillSessionRepository::listDrafts() {
         }
 
         SQLite::Statement qv(db,
-            "SELECT field_id, value FROM fill_values"
+            "SELECT field_id, value, confidence FROM fill_values"
             " WHERE session_id = ? ORDER BY field_id ASC");
+        SQLite::Statement qr(db,
+            "SELECT field_id, source_id, char_start, char_end, excerpt"
+            " FROM fill_source_refs WHERE session_id = ?"
+            " ORDER BY field_id, ref_order");
         for (std::size_t i = 0; i < out.size(); ++i) {
             qv.reset();
             qv.clearBindings();
@@ -171,7 +238,26 @@ SqliteFillSessionRepository::listDrafts() {
                 mondoc::domain::Fill f;
                 f.field_id_      = mondoc::FieldId{qv.getColumn(0).getString()};
                 f.current_value_ = qv.getColumn(1).getString();
+                f.confidence_    = stringToConfidence(qv.getColumn(2).getString());
                 out[i].fills_.push_back(std::move(f));
+            }
+
+            qr.reset();
+            qr.clearBindings();
+            qr.bind(1, ids[i]);
+            while (qr.executeStep()) {
+                mondoc::FieldId fid{qr.getColumn(0).getString()};
+                mondoc::domain::SourceRef r;
+                r.source_id_   = mondoc::SourceDocId{qr.getColumn(1).getString()};
+                r.range_.begin_ = qr.getColumn(2).getInt64();
+                r.range_.end_   = qr.getColumn(3).getInt64();
+                r.excerpt_      = qr.getColumn(4).getString();
+                for (auto& f : out[i].fills_) {
+                    if (f.field_id_ == fid) {
+                        f.source_refs_.push_back(std::move(r));
+                        break;
+                    }
+                }
             }
         }
 
@@ -234,17 +320,77 @@ SqliteFillSessionRepository::upsertValue(const mondoc::FillSessionId& sessionId,
 }
 
 mondoc::expected<void, mondoc::Error>
-SqliteFillSessionRepository::upsertConfidence(const mondoc::FillSessionId&,
-                                               const mondoc::FieldId&,
-                                               mondoc::domain::Confidence) {
-    return mondoc::unexpected(mondoc::Error::generic("not implemented"));
+SqliteFillSessionRepository::upsertConfidence(const mondoc::FillSessionId& sessionId,
+                                               const mondoc::FieldId& fieldId,
+                                               mondoc::domain::Confidence confidence) {
+    auto& db = conn_.raw();
+    try {
+        const auto now = static_cast<int64_t>(unixNowSeconds());
+
+        SQLite::Transaction tx(db);
+
+        SQLite::Statement upsert(db,
+            "INSERT INTO fill_values(session_id, field_id, value, updated_at, confidence)"
+            " VALUES(?,?,'',?,?)"
+            " ON CONFLICT(session_id, field_id) DO UPDATE SET"
+            "  confidence=excluded.confidence,"
+            "  updated_at=excluded.updated_at");
+        upsert.bind(1, sessionId.value());
+        upsert.bind(2, fieldId.value());
+        upsert.bind(3, now);
+        upsert.bind(4, confidenceToString(confidence));
+        upsert.exec();
+
+        SQLite::Statement bump(db,
+            "UPDATE fill_sessions SET updated_at = ? WHERE id = ?");
+        bump.bind(1, now);
+        bump.bind(2, sessionId.value());
+        bump.exec();
+
+        tx.commit();
+        return {};
+    } catch (const SQLite::Exception& e) {
+        return mondoc::unexpected(mondoc::Error::generic(e.what()));
+    }
 }
 
 mondoc::expected<void, mondoc::Error>
-SqliteFillSessionRepository::replaceSourceRefs(const mondoc::FillSessionId&,
-                                                const mondoc::FieldId&,
-                                                const std::vector<mondoc::domain::SourceRef>&) {
-    return mondoc::unexpected(mondoc::Error::generic("not implemented"));
+SqliteFillSessionRepository::replaceSourceRefs(const mondoc::FillSessionId& sessionId,
+                                                const mondoc::FieldId& fieldId,
+                                                const std::vector<mondoc::domain::SourceRef>& refs) {
+    auto& db = conn_.raw();
+    try {
+        SQLite::Transaction tx(db);
+
+        SQLite::Statement del(db,
+            "DELETE FROM fill_source_refs"
+            " WHERE session_id = ? AND field_id = ?");
+        del.bind(1, sessionId.value());
+        del.bind(2, fieldId.value());
+        del.exec();
+
+        SQLite::Statement ins(db,
+            "INSERT INTO fill_source_refs"
+            "(session_id, field_id, ref_order, source_id, char_start, char_end, excerpt)"
+            " VALUES(?,?,?,?,?,?,?)");
+        for (std::size_t i = 0; i < refs.size(); ++i) {
+            ins.reset();
+            ins.clearBindings();
+            ins.bind(1, sessionId.value());
+            ins.bind(2, fieldId.value());
+            ins.bind(3, static_cast<int64_t>(i));
+            ins.bind(4, refs[i].source_id_.value());
+            ins.bind(5, refs[i].range_.begin_);
+            ins.bind(6, refs[i].range_.end_);
+            ins.bind(7, refs[i].excerpt_);
+            ins.exec();
+        }
+
+        tx.commit();
+        return {};
+    } catch (const SQLite::Exception& e) {
+        return mondoc::unexpected(mondoc::Error::generic(e.what()));
+    }
 }
 
 }  // namespace mondoc::adapters::storage
