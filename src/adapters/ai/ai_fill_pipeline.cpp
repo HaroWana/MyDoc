@@ -254,4 +254,58 @@ AiFillPipeline::run(const RunInput& input, const std::atomic<bool>& cancelled) {
     return result;
 }
 
+mondoc::expected<std::vector<mondoc::domain::Fill>, LlmError>
+AiFillPipeline::refine(const RefineInput& input) {
+    if (input.tpl_ == nullptr || input.user_message_.empty()) {
+        return mondoc::unexpected<LlmError>(
+            LlmError::badResponse("missing template or message"));
+    }
+
+    nlohmann::json body = {
+        {"model", config_.model},
+        {"messages", nlohmann::json::array({
+            nlohmann::json{{"role","system"},{"content", std::string(kRefineSystemPrompt)}},
+            nlohmann::json{{"role","user"},  {"content",
+                buildRefineUserPrompt(*input.tpl_, input.sources_,
+                                      input.current_fills_, input.user_message_)}},
+        })},
+        {"response_format", buildJsonSchemaResponseFormat("refine", kRefineJsonSchema)},
+        {"temperature", 0.0},
+        {"stream", false},
+    };
+
+    auto resp = client_.chat(body.dump());
+    if (!resp) return mondoc::unexpected<LlmError>(resp.error());
+
+    auto contentOrErr = parseChatCompletionContent(*resp);
+    if (!contentOrErr) return mondoc::unexpected<LlmError>(contentOrErr.error());
+    auto content = *contentOrErr;
+
+    std::vector<mondoc::domain::Fill> updates;
+    if (!content.contains("updates") || !content["updates"].is_array()) {
+        return updates;
+    }
+
+    std::unordered_map<std::string, mondoc::domain::FieldType> typeByFieldId;
+    for (const auto& f : input.tpl_->fields_) {
+        typeByFieldId.emplace(f.id_.value(), f.type_);
+    }
+
+    for (const auto& entry : content["updates"]) {
+        auto fieldId   = entry.value("field_id",   std::string{});
+        auto rawValue  = entry.value("value",      std::string{});
+        auto confidence = entry.value("confidence", std::string{});
+
+        mondoc::domain::Fill fill;
+        fill.field_id_ = mondoc::FieldId{fieldId};
+        auto it = typeByFieldId.find(fieldId);
+        fill.current_value_ = it != typeByFieldId.end()
+            ? normalizeForFieldType(it->second, rawValue)
+            : rawValue;
+        fill.confidence_ = parseConfidence(confidence);
+        updates.push_back(std::move(fill));
+    }
+    return updates;
+}
+
 }  // namespace mondoc::adapters::ai
