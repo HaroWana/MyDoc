@@ -189,11 +189,12 @@ void applyPlaceholderFills(pugi::xml_document& doc,
         for (pugi::xml_node child : node.children()) {
             std::string_view n{child.name()};
             if (n == "text:p" || n == "text:span") {
-                std::string text = child.child_value();
-                std::string replaced = substitutePlaceholders(text, byName);
-                if (replaced != text) {
-                    while (child.first_child()) child.remove_child(child.first_child());
-                    child.append_child(pugi::node_pcdata).set_value(replaced.c_str());
+                for (pugi::xml_node c : child.children()) {
+                    if (c.type() == pugi::node_pcdata) {
+                        std::string txt = c.value();
+                        std::string rep = substitutePlaceholders(txt, byName);
+                        if (rep != txt) c.set_value(rep.c_str());
+                    }
                 }
                 traverseText(child);
             } else {
