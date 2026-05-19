@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "pdf_document_reader.hpp"
+#include "mondoc/error.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -17,11 +18,10 @@ struct TempFile {
     ~TempFile() { std::error_code ec; std::filesystem::remove(path, ec); }
 };
 
-std::filesystem::path uniqueTempPdfPath() {
+std::filesystem::path uniqueTempPath(const std::string& suffix) {
     static std::mt19937_64 rng{std::random_device{}()};
-    auto suffix = std::to_string(rng());
-    return std::filesystem::temp_directory_path()
-           / ("mondoc_test_" + suffix + ".pdf");
+    auto id = std::to_string(rng());
+    return std::filesystem::temp_directory_path() / ("mondoc_test_" + id + suffix);
 }
 
 }  // namespace
@@ -31,26 +31,27 @@ TEST_CASE("[TMPL-03] PdfDocumentReader: rejects file with wrong extension",
     PdfDocumentReader reader;
     auto result = reader.read(std::filesystem::path{"foo.docx"});
     REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == mondoc::Error::Kind::InvalidArgument);
 }
 
 TEST_CASE("[TMPL-03] PdfDocumentReader: returns error for corrupt file",
           "[formats.pdf_reader]") {
-    TempFile f{uniqueTempPdfPath()};
+    TempFile tmp{uniqueTempPath(".pdf")};
     {
-        std::ofstream out(f.path, std::ios::binary);
-        out << "not a pdf file at all";
+        std::ofstream out(tmp.path, std::ios::binary);
+        out << "not a PDF file at all\x00\x01\x02";
     }
     PdfDocumentReader reader;
-    auto result = reader.read(f.path);
+    auto result = reader.read(tmp.path);
     REQUIRE_FALSE(result.has_value());
 }
 
 TEST_CASE("[TMPL-06] PdfDocumentReader: extracts AcroForm TextBox field",
           "[formats.pdf_reader]") {
-    FAIL("not yet implemented");
+    FAIL("requires real .pdf fixture with AcroForm fields");
 }
 
 TEST_CASE("[TMPL-06] PdfDocumentReader: rejects XFA-only PDF with actionable error",
           "[formats.pdf_reader]") {
-    FAIL("not yet implemented");
+    FAIL("requires real XFA-only .pdf fixture");
 }
