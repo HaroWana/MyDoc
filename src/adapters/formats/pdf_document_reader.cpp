@@ -110,9 +110,10 @@ PdfDocumentReader::read(const std::filesystem::path& path) {
             if (name.empty() || !seen.insert(name).second) continue;
 
             mondoc::domain::Field f;
-            f.id_   = mondoc::FieldId{generateUuid()};
-            f.name_ = name;
-            f.type_ = type;
+            f.id_     = mondoc::FieldId{generateUuid()};
+            f.name_   = name;
+            f.type_   = type;
+            f.origin_ = mondoc::domain::FieldOrigin::FormControl;
             fields.push_back(std::move(f));
         }
 
