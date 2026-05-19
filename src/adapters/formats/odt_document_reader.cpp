@@ -21,7 +21,7 @@ namespace mondoc::adapters::formats {
 
 namespace {
 
-constexpr zip_uint64_t kMaxDocxBytes = 50ULL * 1024 * 1024;
+constexpr zip_uint64_t kMaxOdtBytes = 50ULL * 1024 * 1024;
 constexpr std::size_t  kReadChunkSize = 64 * 1024;
 
 std::string pathToUtf8(const std::filesystem::path& p) {
@@ -77,7 +77,7 @@ readContentXml(zip_t* zf) {
     }
 
     std::string xml;
-    if ((st.valid & ZIP_STAT_SIZE) && st.size <= kMaxDocxBytes) {
+    if ((st.valid & ZIP_STAT_SIZE) && st.size <= kMaxOdtBytes) {
         xml.resize(static_cast<std::size_t>(st.size));
         zip_int64_t got = zip_fread(entry, xml.data(), st.size);
         if (got < 0) {
@@ -96,7 +96,7 @@ readContentXml(zip_t* zf) {
                     mondoc::Error::generic("read error in content.xml"));
             }
             if (got == 0) break;
-            if (xml.size() + static_cast<std::size_t>(got) > kMaxDocxBytes) {
+            if (xml.size() + static_cast<std::size_t>(got) > kMaxOdtBytes) {
                 zip_fclose(entry);
                 return mondoc::unexpected(
                     mondoc::Error::generic("content.xml exceeds size limit"));
@@ -241,7 +241,7 @@ OdtDocumentReader::read(const std::filesystem::path& path) {
 
     std::error_code sizeEc;
     auto sz = std::filesystem::file_size(path, sizeEc);
-    if (!sizeEc && sz > kMaxDocxBytes) {
+    if (!sizeEc && sz > kMaxOdtBytes) {
         return mondoc::unexpected(mondoc::Error::generic("ODT file too large (> 50 MB)"));
     }
 
