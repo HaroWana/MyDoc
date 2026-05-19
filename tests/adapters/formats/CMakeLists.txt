@@ -25,3 +25,21 @@ target_link_libraries(tests_adapters_formats_text_writer
     PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
 add_test(NAME formats.text_writer COMMAND tests_adapters_formats_text_writer)
 set_tests_properties(formats.text_writer PROPERTIES LABELS phase02)
+
+add_executable(tests_adapters_formats_odt_reader test_odt_document_reader.cpp)
+target_link_libraries(tests_adapters_formats_odt_reader
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.odt_reader COMMAND tests_adapters_formats_odt_reader)
+set_tests_properties(formats.odt_reader PROPERTIES LABELS phase04)
+
+add_executable(tests_adapters_formats_pdf_reader test_pdf_document_reader.cpp)
+target_link_libraries(tests_adapters_formats_pdf_reader
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.pdf_reader COMMAND tests_adapters_formats_pdf_reader)
+set_tests_properties(formats.pdf_reader PROPERTIES LABELS phase04)
+
+add_executable(tests_adapters_formats_odt_writer test_odt_document_writer.cpp)
+target_link_libraries(tests_adapters_formats_odt_writer
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.odt_writer COMMAND tests_adapters_formats_odt_writer)
+set_tests_properties(formats.odt_writer PROPERTIES LABELS phase04)

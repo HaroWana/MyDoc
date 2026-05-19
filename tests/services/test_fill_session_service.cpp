@@ -707,3 +707,13 @@ TEST_CASE("FillSessionService::refineField: manual-sticky fill is preserved (REV
     REQUIRE(fillRepo.store_["s1"].fills_[0].current_value_ == "user typed");
     REQUIRE(fillRepo.store_["s1"].fills_[0].confidence_ == Confidence::Manual);
 }
+
+TEST_CASE("[FILL-03] FillSessionService::readSourceText: accepts .odt source",
+          "[services.fill_session]") {
+    FAIL("not yet implemented");
+}
+
+TEST_CASE("[FILL-04] FillSessionService::readSourceText: replaces invalidArgument stub for .pdf",
+          "[services.fill_session]") {
+    FAIL("not yet implemented");
+}

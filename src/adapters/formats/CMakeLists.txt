@@ -6,6 +6,9 @@ add_library(mondoc_adapters_formats STATIC
     docx_document_writer.cpp
     pdf_document_writer.cpp
     text_document_writer.cpp
+    odt_document_reader.cpp
+    pdf_document_reader.cpp
+    odt_document_writer.cpp
 )
 
 target_include_directories(mondoc_adapters_formats PUBLIC
