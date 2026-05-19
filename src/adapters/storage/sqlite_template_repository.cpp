@@ -55,6 +55,23 @@ mondoc::domain::FieldType stringToFieldType(const std::string& s) {
     return FieldType::Text;
 }
 
+std::string fieldOriginToString(mondoc::domain::FieldOrigin o) {
+    using mondoc::domain::FieldOrigin;
+    switch (o) {
+        case FieldOrigin::FormControl: return "FormControl";
+        case FieldOrigin::Placeholder: return "Placeholder";
+        case FieldOrigin::Unknown:     return "unknown";
+    }
+    return "unknown";
+}
+
+mondoc::domain::FieldOrigin stringToFieldOrigin(const std::string& s) {
+    using mondoc::domain::FieldOrigin;
+    if (s == "FormControl") return FieldOrigin::FormControl;
+    if (s == "Placeholder") return FieldOrigin::Placeholder;
+    return FieldOrigin::Unknown;
+}
+
 }  // namespace
 
 SqliteTemplateRepository::SqliteTemplateRepository(SqliteConnection& conn) noexcept
@@ -98,8 +115,8 @@ SqliteTemplateRepository::save(const mondoc::domain::Template& t) {
         clearFields.exec();
 
         SQLite::Statement insertField(db,
-            "INSERT INTO template_fields(id, template_id, name, type, order_idx)"
-            " VALUES(?,?,?,?,?)");
+            "INSERT INTO template_fields(id, template_id, name, type, origin, order_idx)"
+            " VALUES(?,?,?,?,?,?)");
         for (std::size_t i = 0; i < t.fields_.size(); ++i) {
             const auto& f = t.fields_[i];
             insertField.reset();
@@ -108,7 +125,8 @@ SqliteTemplateRepository::save(const mondoc::domain::Template& t) {
             insertField.bind(2, t.id_.value());
             insertField.bind(3, f.name_);
             insertField.bind(4, fieldTypeToString(f.type_));
-            insertField.bind(5, static_cast<int64_t>(i));
+            insertField.bind(5, fieldOriginToString(f.origin_));
+            insertField.bind(6, static_cast<int64_t>(i));
             insertField.exec();
         }
 
@@ -141,14 +159,15 @@ SqliteTemplateRepository::findById(const mondoc::TemplateId& id) {
         }
 
         SQLite::Statement qf(db,
-            "SELECT id, name, type FROM template_fields"
+            "SELECT id, name, type, origin FROM template_fields"
             " WHERE template_id = ? ORDER BY order_idx ASC");
         qf.bind(1, id.value());
         while (qf.executeStep()) {
             mondoc::domain::Field f;
-            f.id_   = mondoc::FieldId{qf.getColumn(0).getString()};
-            f.name_ = qf.getColumn(1).getString();
-            f.type_ = stringToFieldType(qf.getColumn(2).getString());
+            f.id_     = mondoc::FieldId{qf.getColumn(0).getString()};
+            f.name_   = qf.getColumn(1).getString();
+            f.type_   = stringToFieldType(qf.getColumn(2).getString());
+            f.origin_ = stringToFieldOrigin(qf.getColumn(3).getString());
             t.fields_.push_back(std::move(f));
         }
 
@@ -181,7 +200,7 @@ SqliteTemplateRepository::listAll() {
         }
 
         SQLite::Statement qf(db,
-            "SELECT id, name, type FROM template_fields"
+            "SELECT id, name, type, origin FROM template_fields"
             " WHERE template_id = ? ORDER BY order_idx ASC");
         for (std::size_t i = 0; i < out.size(); ++i) {
             qf.reset();
@@ -189,9 +208,10 @@ SqliteTemplateRepository::listAll() {
             qf.bind(1, ids[i]);
             while (qf.executeStep()) {
                 mondoc::domain::Field f;
-                f.id_   = mondoc::FieldId{qf.getColumn(0).getString()};
-                f.name_ = qf.getColumn(1).getString();
-                f.type_ = stringToFieldType(qf.getColumn(2).getString());
+                f.id_     = mondoc::FieldId{qf.getColumn(0).getString()};
+                f.name_   = qf.getColumn(1).getString();
+                f.type_   = stringToFieldType(qf.getColumn(2).getString());
+                f.origin_ = stringToFieldOrigin(qf.getColumn(3).getString());
                 out[i].fields_.push_back(std::move(f));
             }
         }

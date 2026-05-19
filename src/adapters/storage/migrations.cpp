@@ -78,11 +78,16 @@ CREATE INDEX IF NOT EXISTS idx_fill_source_refs_session_field
     ON fill_source_refs(session_id, field_id);
 )SQL";
 
-constexpr std::array<Migration, 4> kMigrations{
+constexpr std::string_view kV5Sql = R"SQL(
+ALTER TABLE template_fields ADD COLUMN origin TEXT NOT NULL DEFAULT 'unknown';
+)SQL";
+
+constexpr std::array<Migration, 5> kMigrations{
     Migration{1, kV1Sql},
     Migration{2, kV2Sql},
     Migration{3, kV3Sql},
     Migration{4, kV4Sql},
+    Migration{5, kV5Sql},
 };
 
 std::int64_t unixNowSeconds() noexcept {
