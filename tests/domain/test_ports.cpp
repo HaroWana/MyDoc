@@ -10,7 +10,7 @@ namespace {
 
 class FakeReader : public IDocumentReader {
 public:
-    std::expected<Template, mondoc::Error>
+    mondoc::expected<Template, mondoc::Error>
     read(const std::filesystem::path& path) override {
         Template t;
         t.name_ = path.filename().string();
@@ -20,18 +20,18 @@ public:
 
 class FakeRepository : public ITemplateRepository {
 public:
-    std::expected<void, mondoc::Error> save(const Template&) override {
+    mondoc::expected<void, mondoc::Error> save(const Template&) override {
         return {};
     }
-    std::expected<Template, mondoc::Error> findById(const TemplateId& id) override {
+    mondoc::expected<Template, mondoc::Error> findById(const TemplateId& id) override {
         if (id.value() == "missing") {
-            return std::unexpected(mondoc::Error::notFound("nope"));
+            return mondoc::unexpected(mondoc::Error::notFound("nope"));
         }
         Template t;
         t.id_ = id;
         return t;
     }
-    std::expected<std::vector<Template>, mondoc::Error> listAll() override {
+    mondoc::expected<std::vector<Template>, mondoc::Error> listAll() override {
         return std::vector<Template>{};
     }
     mondoc::expected<void, mondoc::Error> remove(const TemplateId&) override {
