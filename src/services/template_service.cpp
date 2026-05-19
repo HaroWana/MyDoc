@@ -10,6 +10,8 @@
 #include <utility>
 
 #include "docx_document_reader.hpp"
+#include "odt_document_reader.hpp"
+#include "pdf_document_reader.hpp"
 #include "plain_text_document_reader.hpp"
 
 namespace mondoc::services {
@@ -49,6 +51,14 @@ TemplateService::extractDraft(const std::filesystem::path& path) {
     }
     if (ext == ".txt" || ext == ".md") {
         mondoc::adapters::formats::PlainTextDocumentReader reader;
+        return reader.read(path);
+    }
+    if (ext == ".odt") {
+        mondoc::adapters::formats::OdtDocumentReader reader;
+        return reader.read(path);
+    }
+    if (ext == ".pdf") {
+        mondoc::adapters::formats::PdfDocumentReader reader;
         return reader.read(path);
     }
     return mondoc::unexpected(mondoc::Error::invalidArgument(

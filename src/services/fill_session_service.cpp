@@ -8,6 +8,7 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
+#include <functional>
 #include <fstream>
 #include <ios>
 #include <iterator>
@@ -19,9 +20,12 @@
 #include "ai_fill_pipeline.hpp"
 #include "docx_document_writer.hpp"
 #include "llm_error.hpp"
+#include "odt_document_writer.hpp"
 #include "pdf_document_writer.hpp"
 #include "text_document_writer.hpp"
 #include "domain/confidence.hpp"
+
+#include <podofo/podofo.h>
 
 namespace mondoc::services {
 
@@ -172,6 +176,131 @@ extractDocxText(const std::filesystem::path& path) {
     bool firstParagraph = true;
     collectWtTextRecursive(doc, out, firstParagraph);
     return out;
+}
+
+mondoc::expected<std::string, mondoc::Error>
+extractOdtText(const std::filesystem::path& path) {
+    int errCode = 0;
+    const std::string nativePath = pathToUtf8(path);
+    zip_t* zf = zip_open(nativePath.c_str(), ZIP_RDONLY, &errCode);
+    if (!zf) {
+        zip_error_t ze;
+        zip_error_init_with_code(&ze, errCode);
+        std::string msg = zip_error_strerror(&ze);
+        zip_error_fini(&ze);
+        return mondoc::unexpected(mondoc::Error::generic(std::move(msg)));
+    }
+
+    zip_stat_t st;
+    zip_stat_init(&st);
+    if (zip_stat(zf, "content.xml", 0, &st) < 0) {
+        zip_discard(zf);
+        return mondoc::unexpected(mondoc::Error::generic("content.xml not found in ODT"));
+    }
+    if ((st.valid & ZIP_STAT_SIZE) && st.size > kMaxSourceBytes) {
+        zip_discard(zf);
+        return mondoc::unexpected(mondoc::Error::generic("ODT too large"));
+    }
+    zip_file_t* entry = zip_fopen(zf, "content.xml", 0);
+    if (!entry) {
+        zip_discard(zf);
+        return mondoc::unexpected(mondoc::Error::generic("failed to open content.xml"));
+    }
+    std::string xml;
+    if ((st.valid & ZIP_STAT_SIZE) && st.size <= kMaxSourceBytes) {
+        xml.resize(static_cast<std::size_t>(st.size));
+        zip_int64_t got = zip_fread(entry, xml.data(), st.size);
+        zip_fclose(entry);
+        zip_discard(zf);
+        if (got < 0) {
+            return mondoc::unexpected(mondoc::Error::generic("read error in content.xml"));
+        }
+        xml.resize(static_cast<std::size_t>(got));
+    } else {
+        constexpr std::size_t kChunkSize = 64 * 1024;
+        std::array<char, kChunkSize> buf{};
+        for (;;) {
+            zip_int64_t got = zip_fread(entry, buf.data(), buf.size());
+            if (got < 0) {
+                zip_fclose(entry);
+                zip_discard(zf);
+                return mondoc::unexpected(mondoc::Error::generic("read error in content.xml"));
+            }
+            if (got == 0) break;
+            if (xml.size() + static_cast<std::size_t>(got) > kMaxSourceBytes) {
+                zip_fclose(entry);
+                zip_discard(zf);
+                return mondoc::unexpected(mondoc::Error::generic("ODT too large"));
+            }
+            xml.append(buf.data(), static_cast<std::size_t>(got));
+        }
+        zip_fclose(entry);
+        zip_discard(zf);
+    }
+
+    pugi::xml_document doc;
+    auto pr = doc.load_buffer(xml.data(), xml.size());
+    if (pr.status != pugi::status_ok) {
+        return mondoc::unexpected(mondoc::Error::generic(pr.description()));
+    }
+
+    std::string out;
+    std::function<void(pugi::xml_node)> collectText;
+    collectText = [&](pugi::xml_node node) {
+        for (pugi::xml_node child : node.children()) {
+            std::string_view n{child.name()};
+            if (n == "text:p") {
+                if (!out.empty()) out += '\n';
+                std::string para;
+                std::function<void(pugi::xml_node)> collectPara;
+                collectPara = [&](pugi::xml_node pNode) {
+                    for (pugi::xml_node c : pNode.children()) {
+                        std::string_view cn{c.name()};
+                        if (cn == "text:span") {
+                            para += c.child_value();
+                            collectPara(c);
+                        } else if (std::string_view{c.name()}.empty()) {
+                            para += c.value();
+                        }
+                    }
+                };
+                para += child.child_value();
+                collectPara(child);
+                out += para;
+            } else {
+                collectText(child);
+            }
+        }
+    };
+    collectText(doc);
+    return out;
+}
+
+mondoc::expected<std::string, mondoc::Error>
+extractPdfText(const std::filesystem::path& path) {
+    try {
+        PoDoFo::PdfMemDocument document;
+        document.Load(pathToUtf8(path));
+        std::string text;
+        unsigned count = document.GetPages().GetCount();
+        for (unsigned i = 0; i < count; i++) {
+            auto& page = document.GetPages().GetPageAt(i);
+            std::vector<PoDoFo::PdfTextEntry> entries;
+            page.ExtractTextTo(entries);
+            for (auto& entry : entries) {
+                text += entry.Text;
+                text += ' ';
+            }
+            text += '\n';
+        }
+        return text;
+    } catch (const PoDoFo::PdfError& e) {
+        return mondoc::unexpected(mondoc::Error::generic(
+            std::string{"podofo: "} + e.what()));
+    } catch (const std::exception& e) {
+        return mondoc::unexpected(mondoc::Error::generic(
+            std::string{"podofo: "} + e.what()));
+    }
 }
 
 }  // namespace
@@ -372,6 +501,11 @@ FillSessionService::exportSession(const mondoc::FillSessionId& id,
             writeResult = w.write(*tpl, session->fills_, destPath);
             break;
         }
+        case ExportFormat::Odt: {
+            mondoc::adapters::formats::OdtDocumentWriter w;
+            writeResult = w.write(*tpl, session->fills_, destPath);
+            break;
+        }
     }
     if (!writeResult) return mondoc::unexpected(writeResult.error());
 
@@ -384,9 +518,11 @@ FillSessionService::exportSession(const mondoc::FillSessionId& id,
 mondoc::expected<std::string, mondoc::Error>
 FillSessionService::readSourceText(const std::filesystem::path& path) {
     const std::string ext = lowercaseExtension(path);
+    if (ext == ".odt") {
+        return extractOdtText(path);
+    }
     if (ext == ".pdf") {
-        return mondoc::unexpected(mondoc::Error::invalidArgument(
-            "PDF source reading is Phase 4 (deferred)"));
+        return extractPdfText(path);
     }
     if (ext == ".docx") {
         return extractDocxText(path);

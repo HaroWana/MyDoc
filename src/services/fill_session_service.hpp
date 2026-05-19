@@ -19,7 +19,7 @@ namespace mondoc::adapters::ai { class AiFillPipeline; }
 
 namespace mondoc::services {
 
-enum class ExportFormat { Docx, Pdf, Text, Markdown };
+enum class ExportFormat { Docx, Pdf, Text, Markdown, Odt };
 
 struct AiFillSourceInput {
     mondoc::SourceDocId id_;

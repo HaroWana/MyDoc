@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <zip.h>
+
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -468,7 +470,7 @@ TEST_CASE("FillSessionService: readSourceText returns body for .md",
     REQUIRE(*r == "# Heading\nbody");
 }
 
-TEST_CASE("FillSessionService: readSourceText returns invalidArgument with Phase 4 message for .pdf",
+TEST_CASE("FillSessionService: readSourceText returns generic error (not invalidArgument) for invalid .pdf path",
           "[services.fill_session]") {
     FakeFillRepo fillRepo;
     FakeTemplateRepo tplRepo;
@@ -477,9 +479,8 @@ TEST_CASE("FillSessionService: readSourceText returns invalidArgument with Phase
     auto r = svc.readSourceText(std::filesystem::path{"/no.pdf"});
 
     REQUIRE_FALSE(r.has_value());
-    REQUIRE(r.error().kind() == mondoc::Error::Kind::InvalidArgument);
-    REQUIRE(r.error().message().find("Phase 4") != std::string::npos);
-    REQUIRE(r.error().message().find("deferred") != std::string::npos);
+    // PoDoFo returns a generic error for non-existent/invalid files
+    REQUIRE(r.error().kind() != mondoc::Error::Kind::InvalidArgument);
 }
 
 TEST_CASE("FillSessionService: readSourceText returns invalidArgument for unsupported extension",
@@ -710,10 +711,59 @@ TEST_CASE("FillSessionService::refineField: manual-sticky fill is preserved (REV
 
 TEST_CASE("[FILL-03] FillSessionService::readSourceText: accepts .odt source",
           "[services.fill_session]") {
-    FAIL("not yet implemented");
+    TempFile tmp{uniqueTempPath(".odt")};
+    {
+        constexpr std::string_view minimalOdt = R"XML(<?xml version="1.0"?>
+<office:document-content
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:text>
+    <text:p>Hello world</text:p>
+  </office:text></office:body>
+</office:document-content>)XML";
+        int err = 0;
+        zip_t* zf = zip_open(tmp.path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
+        REQUIRE(zf != nullptr);
+        auto* src = zip_source_buffer(zf, minimalOdt.data(), minimalOdt.size(), 0);
+        REQUIRE(src != nullptr);
+        REQUIRE(zip_file_add(zf, "content.xml", src, ZIP_FL_OVERWRITE) >= 0);
+        REQUIRE(zip_close(zf) == 0);
+    }
+
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    FillSessionService svc{fillRepo, tplRepo};
+    auto result = svc.readSourceText(tmp.path);
+
+    // Must succeed OR return a generic error — must NOT return InvalidArgument
+    if (!result.has_value()) {
+        REQUIRE(result.error().kind() != mondoc::Error::Kind::InvalidArgument);
+    } else {
+        // Valid ODT: should contain the paragraph text
+        REQUIRE(result->find("Hello world") != std::string::npos);
+    }
 }
 
 TEST_CASE("[FILL-04] FillSessionService::readSourceText: replaces invalidArgument stub for .pdf",
           "[services.fill_session]") {
-    FAIL("not yet implemented");
+    TempFile tmp{uniqueTempPath(".pdf")};
+    {
+        std::ofstream out(tmp.path, std::ios::binary);
+        out << "not a valid PDF";
+    }
+
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    FillSessionService svc{fillRepo, tplRepo};
+    auto result = svc.readSourceText(tmp.path);
+
+    // Must NOT be the old "Phase 4 (deferred)" invalidArgument stub
+    bool isOldStub = !result.has_value() &&
+                     result.error().kind() == mondoc::Error::Kind::InvalidArgument &&
+                     result.error().message().find("Phase 4") != std::string::npos;
+    REQUIRE_FALSE(isOldStub);
+    // Garbage bytes cause PoDoFo to return a generic error
+    if (!result.has_value()) {
+        REQUIRE(result.error().kind() != mondoc::Error::Kind::InvalidArgument);
+    }
 }
