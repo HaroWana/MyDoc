@@ -1,4 +1,5 @@
 #pragma once
+#include <optional>
 #include <string>
 #include "mondoc/id.hpp"
 
@@ -14,11 +15,27 @@ enum class FieldOrigin {
     Placeholder,  // detected via {{}} / [] / <> regex scan
 };
 
+struct PdfLocation {
+    int page_index;
+    double x, y, w, h;
+};
+
+struct TextLocation {
+    int paragraph_index;
+    int char_offset;
+};
+
+struct FieldLocation {
+    std::optional<PdfLocation> pdf;
+    std::optional<TextLocation> text;
+};
+
 struct Field {
     FieldId id_;
     std::string name_;
     FieldType type_ = FieldType::Text;
     FieldOrigin origin_ = FieldOrigin::Unknown;
+    std::optional<FieldLocation> location_;
 };
 
 }  // namespace mondoc::domain
