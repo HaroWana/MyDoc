@@ -116,3 +116,11 @@ TEST_CASE("LlmConfig::loadFromJson: wrong type for api_url returns Error",
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().kind() == mondoc::Error::Kind::Generic);
 }
+
+TEST_CASE("LlmConfig::saveToJson: Wave 0 stub — round-trips all three fields [phase05][adapters.ai.llm_config]") {
+    SKIP("Wave 0 stub — LlmConfig::saveToJson not yet implemented");
+}
+
+TEST_CASE("LlmConfig::saveToJson: Wave 0 stub — unwritable path returns Error [phase05][adapters.ai.llm_config]") {
+    SKIP("Wave 0 stub — LlmConfig::saveToJson not yet implemented");
+}

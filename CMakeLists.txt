@@ -20,7 +20,7 @@ check_cxx_source_compiles(
     "#include <expected>\nint main(){ std::expected<int,int> e{0}; (void)e; return 0; }"
     MONDOC_HAVE_STD_EXPECTED)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets Pdf)
 qt_standard_project_setup()
 find_package(SQLiteCpp CONFIG REQUIRED)
 find_package(Catch2 3 CONFIG REQUIRED)

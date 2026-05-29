@@ -43,3 +43,9 @@ target_link_libraries(tests_adapters_formats_odt_writer
     PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
 add_test(NAME formats.odt_writer COMMAND tests_adapters_formats_odt_writer)
 set_tests_properties(formats.odt_writer PROPERTIES LABELS phase04)
+
+add_executable(tests_adapters_formats_mondoc_bundle test_mondoc_bundle.cpp)
+target_link_libraries(tests_adapters_formats_mondoc_bundle
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.mondoc_bundle COMMAND tests_adapters_formats_mondoc_bundle)
+set_tests_properties(formats.mondoc_bundle PROPERTIES LABELS phase05)
