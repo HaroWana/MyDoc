@@ -82,12 +82,17 @@ constexpr std::string_view kV5Sql = R"SQL(
 ALTER TABLE template_fields ADD COLUMN origin TEXT NOT NULL DEFAULT 'unknown';
 )SQL";
 
-constexpr std::array<Migration, 5> kMigrations{
+constexpr std::string_view kV6Sql = R"SQL(
+ALTER TABLE template_fields ADD COLUMN location_json TEXT;
+)SQL";
+
+constexpr std::array<Migration, 6> kMigrations{
     Migration{1, kV1Sql},
     Migration{2, kV2Sql},
     Migration{3, kV3Sql},
     Migration{4, kV4Sql},
     Migration{5, kV5Sql},
+    Migration{6, kV6Sql},
 };
 
 std::int64_t unixNowSeconds() noexcept {
