@@ -5,8 +5,11 @@
 #include <SQLiteCpp/Statement.h>
 #include <SQLiteCpp/Transaction.h>
 
+#include <nlohmann/json.hpp>
+
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -72,6 +75,51 @@ mondoc::domain::FieldOrigin stringToFieldOrigin(const std::string& s) {
     return FieldOrigin::Unknown;
 }
 
+std::string locationToJson(const std::optional<mondoc::domain::FieldLocation>& loc) {
+    if (!loc.has_value()) return "";
+    nlohmann::json j;
+    if (loc->pdf.has_value()) {
+        j["type"]       = "pdf";
+        j["page_index"] = loc->pdf->page_index;
+        j["x"]          = loc->pdf->x;
+        j["y"]          = loc->pdf->y;
+        j["w"]          = loc->pdf->w;
+        j["h"]          = loc->pdf->h;
+    } else if (loc->text.has_value()) {
+        j["type"]            = "text";
+        j["paragraph_index"] = loc->text->paragraph_index;
+        j["char_offset"]     = loc->text->char_offset;
+    } else {
+        return "";
+    }
+    return j.dump();
+}
+
+std::optional<mondoc::domain::FieldLocation> locationFromJson(const std::string& s) {
+    if (s.empty()) return std::nullopt;
+    try {
+        auto j = nlohmann::json::parse(s);
+        if (!j.contains("type")) return std::nullopt;
+        const std::string type = j["type"].get<std::string>();
+        if (type == "pdf") {
+            mondoc::domain::PdfLocation pl{};
+            pl.page_index = j.value("page_index", 0);
+            pl.x = j.value("x", 0.0);
+            pl.y = j.value("y", 0.0);
+            pl.w = j.value("w", 0.0);
+            pl.h = j.value("h", 0.0);
+            return mondoc::domain::FieldLocation{pl, std::nullopt};
+        }
+        if (type == "text") {
+            mondoc::domain::TextLocation tl{};
+            tl.paragraph_index = j.value("paragraph_index", 0);
+            tl.char_offset = j.value("char_offset", 0);
+            return mondoc::domain::FieldLocation{std::nullopt, tl};
+        }
+    } catch (...) {}
+    return std::nullopt;
+}
+
 }  // namespace
 
 SqliteTemplateRepository::SqliteTemplateRepository(SqliteConnection& conn) noexcept
@@ -115,8 +163,8 @@ SqliteTemplateRepository::save(const mondoc::domain::Template& t) {
         clearFields.exec();
 
         SQLite::Statement insertField(db,
-            "INSERT INTO template_fields(id, template_id, name, type, origin, order_idx)"
-            " VALUES(?,?,?,?,?,?)");
+            "INSERT INTO template_fields(id, template_id, name, type, origin, order_idx, location_json)"
+            " VALUES(?,?,?,?,?,?,?)");
         for (std::size_t i = 0; i < t.fields_.size(); ++i) {
             const auto& f = t.fields_[i];
             insertField.reset();
@@ -127,6 +175,11 @@ SqliteTemplateRepository::save(const mondoc::domain::Template& t) {
             insertField.bind(4, fieldTypeToString(f.type_));
             insertField.bind(5, fieldOriginToString(f.origin_));
             insertField.bind(6, static_cast<int64_t>(i));
+            const std::string locJson = locationToJson(f.location_);
+            if (locJson.empty())
+                insertField.bind(7);
+            else
+                insertField.bind(7, locJson);
             insertField.exec();
         }
 
@@ -159,7 +212,7 @@ SqliteTemplateRepository::findById(const mondoc::TemplateId& id) {
         }
 
         SQLite::Statement qf(db,
-            "SELECT id, name, type, origin FROM template_fields"
+            "SELECT id, name, type, origin, location_json FROM template_fields"
             " WHERE template_id = ? ORDER BY order_idx ASC");
         qf.bind(1, id.value());
         while (qf.executeStep()) {
@@ -168,6 +221,10 @@ SqliteTemplateRepository::findById(const mondoc::TemplateId& id) {
             f.name_   = qf.getColumn(1).getString();
             f.type_   = stringToFieldType(qf.getColumn(2).getString());
             f.origin_ = stringToFieldOrigin(qf.getColumn(3).getString());
+            const std::string locStr = qf.getColumn(4).isNull()
+                ? std::string{}
+                : qf.getColumn(4).getString();
+            f.location_ = locationFromJson(locStr);
             t.fields_.push_back(std::move(f));
         }
 
@@ -200,7 +257,7 @@ SqliteTemplateRepository::listAll() {
         }
 
         SQLite::Statement qf(db,
-            "SELECT id, name, type, origin FROM template_fields"
+            "SELECT id, name, type, origin, location_json FROM template_fields"
             " WHERE template_id = ? ORDER BY order_idx ASC");
         for (std::size_t i = 0; i < out.size(); ++i) {
             qf.reset();
@@ -212,6 +269,10 @@ SqliteTemplateRepository::listAll() {
                 f.name_   = qf.getColumn(1).getString();
                 f.type_   = stringToFieldType(qf.getColumn(2).getString());
                 f.origin_ = stringToFieldOrigin(qf.getColumn(3).getString());
+                const std::string locStr = qf.getColumn(4).isNull()
+                    ? std::string{}
+                    : qf.getColumn(4).getString();
+                f.location_ = locationFromJson(locStr);
                 out[i].fields_.push_back(std::move(f));
             }
         }

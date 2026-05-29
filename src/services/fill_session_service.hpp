@@ -50,6 +50,10 @@ public:
 
     bool isAiConfigured() const noexcept { return aiPipeline_ != nullptr; }
 
+    void setAiPipeline(mondoc::adapters::ai::AiFillPipeline* pipeline) noexcept {
+        aiPipeline_ = pipeline;
+    }
+
     mondoc::expected<mondoc::FillSessionId, mondoc::Error>
     openSession(const mondoc::TemplateId& templateId);
 
