@@ -1,4 +1,5 @@
 find_package(podofo CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 add_library(mondoc_adapters_formats STATIC
     docx_document_reader.cpp
@@ -9,6 +10,8 @@ add_library(mondoc_adapters_formats STATIC
     odt_document_reader.cpp
     pdf_document_reader.cpp
     odt_document_writer.cpp
+    mondoc_bundle_writer.cpp
+    mondoc_bundle_reader.cpp
 )
 
 target_include_directories(mondoc_adapters_formats PUBLIC
@@ -18,6 +21,7 @@ target_compile_features(mondoc_adapters_formats PUBLIC cxx_std_20)
 
 target_link_libraries(mondoc_adapters_formats
     PUBLIC mondoc_domain libzip::zip pugixml::pugixml stduuid
-    PRIVATE $<IF:$<TARGET_EXISTS:podofo_shared>,podofo_shared,podofo_static>)
+    PRIVATE $<IF:$<TARGET_EXISTS:podofo_shared>,podofo_shared,podofo_static>
+            nlohmann_json::nlohmann_json)
 
 # Formats is a pure C++ adapter and must not link any Qt component.
