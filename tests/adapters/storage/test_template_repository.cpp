@@ -218,3 +218,74 @@ TEST_CASE("SqliteTemplateRepository: field order preserved (order_idx)",
     REQUIRE(loaded->fields_[1].name_ == "a_field");
     REQUIRE(loaded->fields_[2].name_ == "b_field");
 }
+
+TEST_CASE("SqliteTemplateRepository: FieldLocation PdfLocation round-trips [phase05][storage.template_repo]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    REQUIRE(runMigrations(*conn).has_value());
+    SqliteTemplateRepository repo(*conn);
+
+    auto t = makeTemplate("t1", "Invoice");
+    auto f = makeField("f1", "signature");
+    mondoc::domain::PdfLocation pl{0, 0.1, 0.2, 0.3, 0.4};
+    f.location_ = mondoc::domain::FieldLocation{pl, std::nullopt};
+    t.fields_.push_back(std::move(f));
+    REQUIRE(repo.save(t).has_value());
+
+    auto loaded = repo.findById(mondoc::TemplateId{"t1"});
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->fields_.size() == 1);
+    REQUIRE(loaded->fields_[0].location_.has_value());
+    REQUIRE(loaded->fields_[0].location_->pdf.has_value());
+    REQUIRE_FALSE(loaded->fields_[0].location_->text.has_value());
+    REQUIRE(loaded->fields_[0].location_->pdf->page_index == 0);
+    REQUIRE(loaded->fields_[0].location_->pdf->x == 0.1);
+    REQUIRE(loaded->fields_[0].location_->pdf->y == 0.2);
+    REQUIRE(loaded->fields_[0].location_->pdf->w == 0.3);
+    REQUIRE(loaded->fields_[0].location_->pdf->h == 0.4);
+}
+
+TEST_CASE("SqliteTemplateRepository: Field without location_ stores NULL in DB [phase05][storage.template_repo]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    REQUIRE(runMigrations(*conn).has_value());
+    SqliteTemplateRepository repo(*conn);
+
+    auto t = makeTemplate("t1", "Invoice");
+    t.fields_.push_back(makeField("f1", "customer_name"));
+    REQUIRE(repo.save(t).has_value());
+
+    SQLite::Statement q(conn->raw(),
+        "SELECT location_json FROM template_fields WHERE id = ?");
+    q.bind(1, std::string{"f1"});
+    REQUIRE(q.executeStep());
+    REQUIRE(q.getColumn(0).isNull());
+
+    auto loaded = repo.findById(mondoc::TemplateId{"t1"});
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->fields_.size() == 1);
+    REQUIRE_FALSE(loaded->fields_[0].location_.has_value());
+}
+
+TEST_CASE("SqliteTemplateRepository: FieldLocation TextLocation round-trips [phase05][storage.template_repo]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    REQUIRE(runMigrations(*conn).has_value());
+    SqliteTemplateRepository repo(*conn);
+
+    auto t = makeTemplate("t1", "Memo");
+    auto f = makeField("f1", "title");
+    mondoc::domain::TextLocation tl{3, 12};
+    f.location_ = mondoc::domain::FieldLocation{std::nullopt, tl};
+    t.fields_.push_back(std::move(f));
+    REQUIRE(repo.save(t).has_value());
+
+    auto loaded = repo.findById(mondoc::TemplateId{"t1"});
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->fields_.size() == 1);
+    REQUIRE(loaded->fields_[0].location_.has_value());
+    REQUIRE_FALSE(loaded->fields_[0].location_->pdf.has_value());
+    REQUIRE(loaded->fields_[0].location_->text.has_value());
+    REQUIRE(loaded->fields_[0].location_->text->paragraph_index == 3);
+    REQUIRE(loaded->fields_[0].location_->text->char_offset == 12);
+}
