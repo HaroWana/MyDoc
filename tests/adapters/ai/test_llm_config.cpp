@@ -117,10 +117,34 @@ TEST_CASE("LlmConfig::loadFromJson: wrong type for api_url returns Error",
     REQUIRE(result.error().kind() == mondoc::Error::Kind::Generic);
 }
 
-TEST_CASE("LlmConfig::saveToJson: Wave 0 stub — round-trips all three fields [phase05][adapters.ai.llm_config]") {
-    SKIP("Wave 0 stub — LlmConfig::saveToJson not yet implemented");
+TEST_CASE("LlmConfig::saveToJson: round-trips all three fields [phase05][adapters.ai.llm_config]") {
+    auto path = uniqueTempPath(".json");
+    TempFile tmp{path};
+
+    LlmConfig cfg;
+    cfg.api_url = "https://hub.example.com/v1";
+    cfg.api_key = "sk-secret";
+    cfg.model   = "gpt-4o";
+
+    auto saveResult = cfg.saveToJson(path);
+    REQUIRE(saveResult.has_value());
+
+    auto loadResult = LlmConfig::loadFromJson(path);
+    REQUIRE(loadResult.has_value());
+    REQUIRE(loadResult->api_url == "https://hub.example.com/v1");
+    REQUIRE(loadResult->api_key == "sk-secret");
+    REQUIRE(loadResult->model == "gpt-4o");
+    REQUIRE(loadResult->isConfigured());
 }
 
-TEST_CASE("LlmConfig::saveToJson: Wave 0 stub — unwritable path returns Error [phase05][adapters.ai.llm_config]") {
-    SKIP("Wave 0 stub — LlmConfig::saveToJson not yet implemented");
+TEST_CASE("LlmConfig::saveToJson: unwritable path returns Error [phase05][adapters.ai.llm_config]") {
+    std::filesystem::path badPath =
+        std::filesystem::path("/proc/mondoc_test_write_denied/config.json");
+    LlmConfig cfg;
+    cfg.api_url = "https://x.com";
+    cfg.api_key = "k";
+    cfg.model   = "m";
+    auto result = cfg.saveToJson(badPath);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == mondoc::Error::Kind::Generic);
 }
