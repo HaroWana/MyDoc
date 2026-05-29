@@ -20,6 +20,9 @@ struct LlmConfig {
     // not an error. Returns Error only on malformed JSON or unreadable file.
     static mondoc::expected<LlmConfig, mondoc::Error>
     loadFromJson(const std::filesystem::path& path);
+
+    mondoc::expected<void, mondoc::Error>
+    saveToJson(const std::filesystem::path& path) const;
 };
 
 }  // namespace mondoc::adapters::ai

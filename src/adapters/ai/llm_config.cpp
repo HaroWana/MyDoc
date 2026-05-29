@@ -51,4 +51,33 @@ LlmConfig::loadFromJson(const std::filesystem::path& path) {
     return cfg;
 }
 
+mondoc::expected<void, mondoc::Error>
+LlmConfig::saveToJson(const std::filesystem::path& path) const {
+    nlohmann::json doc;
+    doc["api_url"] = api_url;
+    doc["api_key"] = api_key;
+    doc["model"]   = model;
+
+    std::error_code ec;
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), ec);
+    }
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        auto u8 = path.u8string();
+        return mondoc::unexpected(mondoc::Error::generic(
+            std::string{"cannot write config file: "} +
+            std::string(reinterpret_cast<const char*>(u8.data()), u8.size())));
+    }
+    out << doc.dump(2);
+    if (!out) {
+        auto u8 = path.u8string();
+        return mondoc::unexpected(mondoc::Error::generic(
+            std::string{"write error on config file: "} +
+            std::string(reinterpret_cast<const char*>(u8.data()), u8.size())));
+    }
+    return {};
+}
+
 }  // namespace mondoc::adapters::ai
