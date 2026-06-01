@@ -193,6 +193,7 @@ MondocBundleReader::read(const std::filesystem::path& src) {
 
     mondoc::domain::Template t;
     t.id_ = mondoc::TemplateId{generateUuid()};
+    t.source_path_ = sourceFilename;
     try {
         if (doc.contains("name"))          t.name_          = doc.at("name").get<std::string>();
         if (doc.contains("source_format")) t.source_format_ = doc.at("source_format").get<std::string>();
