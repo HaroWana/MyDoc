@@ -28,6 +28,17 @@ CompositionRoot::CompositionRoot(mondoc::adapters::storage::SqliteConnection con
       service_(repo_),
       llm_client_(makeClient(llmConfig)),
       ai_pipeline_(makePipeline(llm_client_.get(), llmConfig)),
-      fill_session_service_(fill_session_repo_, repo_, ai_pipeline_.get()) {}
+      fill_session_service_(fill_session_repo_, repo_, ai_pipeline_.get()),
+      config_(std::move(llmConfig)) {}
+
+void CompositionRoot::reconfigureLlm(mondoc::adapters::ai::LlmConfig config) {
+    // Destroy pipeline first — it holds a raw reference to llm_client_.
+    ai_pipeline_.reset();
+    llm_client_.reset();
+    llm_client_  = makeClient(config);
+    ai_pipeline_ = makePipeline(llm_client_.get(), config);
+    fill_session_service_.setAiPipeline(ai_pipeline_.get());
+    config_ = std::move(config);
+}
 
 }  // namespace mondoc::app

@@ -18,6 +18,13 @@ struct CompositionRoot {
     CompositionRoot(mondoc::adapters::storage::SqliteConnection conn,
                     mondoc::adapters::ai::LlmConfig llmConfig);
 
+    // Callers must not invoke reconfigureLlm() while an AI fill is in progress —
+    // it destroys the pipeline a running fill may still reference. Plan 05-07
+    // disables the Settings action during active fills to enforce this.
+    void reconfigureLlm(mondoc::adapters::ai::LlmConfig config);
+
+    const mondoc::adapters::ai::LlmConfig& config() const noexcept { return config_; }
+
     mondoc::adapters::storage::SqliteConnection conn_;
     mondoc::adapters::storage::SqliteTemplateRepository repo_;
     mondoc::adapters::storage::SqliteFillSessionRepository fill_session_repo_;
@@ -25,6 +32,9 @@ struct CompositionRoot {
     std::unique_ptr<mondoc::adapters::ai::LlmClient> llm_client_;
     std::unique_ptr<mondoc::adapters::ai::AiFillPipeline> ai_pipeline_;
     mondoc::services::FillSessionService fill_session_service_;
+
+private:
+    mondoc::adapters::ai::LlmConfig config_;
 };
 
 }  // namespace mondoc::app
