@@ -6,6 +6,7 @@ add_library(mondoc_ui STATIC
     field_form_pane.cpp
     fill_session_view.cpp
     main_window.cpp
+    region_mark_viewer.cpp
     resume_banner.cpp
     schema_dock_widget.cpp
     settings_dialog.cpp
