@@ -1,0 +1,149 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  QT_VERSION: '6.8.0'
+  APP_VERSION: '1.0.0'
+
+jobs:
+  build-linux-appimage:
+    name: Linux AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev \
+              libfontconfig1-dev libxcb-xkb-dev libxcb-cursor-dev imagemagick
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+          modules: 'qtbase qtpdf'
+          cache: true
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+
+      - name: Configure and Build
+        run: |
+          cmake --preset linux-gcc -DCMAKE_BUILD_TYPE=Release
+          cmake --build --preset linux-gcc --config Release
+
+      - name: Download linuxdeploy
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+
+      - name: Prepare AppDir
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+          cp build/linux-gcc/src/app/mondoc AppDir/usr/bin/
+          cp installer/linux/mondoc.desktop AppDir/usr/share/applications/
+          # Placeholder icon — replace with real icon in future
+          convert -size 256x256 xc:#2563EB AppDir/usr/share/icons/hicolor/256x256/apps/mondoc.png 2>/dev/null || \
+            cp /dev/null AppDir/usr/share/icons/hicolor/256x256/apps/mondoc.png
+          mkdir -p AppDir/usr/lib/mondoc
+          cp -r LICENSES AppDir/usr/lib/mondoc/
+
+      - name: Build AppImage
+        env:
+          QMAKE: ${{ env.Qt6_DIR }}/bin/qmake6
+          VERSION: ${{ env.APP_VERSION }}
+        run: |
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --plugin qt \
+            --output appimage
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mondoc-appimage
+          path: MonDoc-*.AppImage
+
+  build-windows-installer:
+    name: Windows Installer
+    runs-on: windows-2022
+    env:
+      CODE_SIGN_CERT_B64: ${{ secrets.CODE_SIGN_CERT_B64 }}
+      CODE_SIGN_CERT_PASSWORD: ${{ secrets.CODE_SIGN_CERT_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          modules: 'qtbase qtpdf'
+          cache: true
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+
+      - name: Configure and Build
+        run: |
+          cmake --preset windows-msvc -DCMAKE_BUILD_TYPE=Release
+          cmake --build --preset windows-msvc --config Release
+
+      - name: Run windeployqt
+        shell: pwsh
+        run: |
+          $qtBin = "$env:Qt6_DIR\bin"
+          New-Item -ItemType Directory -Force -Path deploy
+          Copy-Item "build\windows-msvc\src\app\Release\mondoc.exe" deploy\
+          & "$qtBin\windeployqt.exe" --release --no-translations deploy\mondoc.exe
+
+      - name: Decode signing certificate
+        if: env.CODE_SIGN_CERT_B64 != ''
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String($env:CODE_SIGN_CERT_B64)
+          [IO.File]::WriteAllBytes('cert.pfx', $bytes)
+
+      - name: Sign binary
+        if: env.CODE_SIGN_CERT_B64 != ''
+        shell: pwsh
+        run: |
+          signtool.exe sign `
+            /f cert.pfx /p $env:CODE_SIGN_CERT_PASSWORD `
+            /tr http://timestamp.digicert.com /td sha256 /fd sha256 `
+            deploy\mondoc.exe
+
+      - name: Copy LICENSES to deploy
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse LICENSES deploy\LICENSES
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\NSIS\makensis.exe" installer\windows\mondoc.nsi
+
+      - name: Sign installer
+        if: env.CODE_SIGN_CERT_B64 != ''
+        shell: pwsh
+        run: |
+          signtool.exe sign `
+            /f cert.pfx /p $env:CODE_SIGN_CERT_PASSWORD `
+            /tr http://timestamp.digicert.com /td sha256 /fd sha256 `
+            mondoc-setup.exe
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mondoc-windows-installer
+          path: mondoc-setup.exe
