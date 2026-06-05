@@ -16,6 +16,7 @@ public:
     explicit SchemaDockWidget(QWidget* parent = nullptr);
 
     void populate(const std::vector<mondoc::domain::Field>& fields);
+    void addFieldExternal(const mondoc::domain::Field& field);
     std::vector<mondoc::domain::Field> currentFields() const;
 
 signals:

@@ -66,7 +66,11 @@ int main(int argc, char* argv[]) {
     mondoc::app::CompositionRoot root{std::move(*connResult), std::move(*cfgResult)};
     mondoc::ui::MainWindow window{root.service_,
                                   root.fill_session_service_,
-                                  root.repo_};
+                                  root.repo_,
+                                  root.config(),
+                                  [&root](mondoc::adapters::ai::LlmConfig cfg) {
+                                      root.reconfigureLlm(std::move(cfg));
+                                  }};
     window.resize(1024, 768);
     window.show();
 

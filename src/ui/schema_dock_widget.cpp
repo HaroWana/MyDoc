@@ -167,6 +167,15 @@ SchemaDockWidget::SchemaDockWidget(QWidget* parent)
             this, &SchemaDockWidget::onSelectionChanged);
 }
 
+void SchemaDockWidget::addFieldExternal(const mondoc::domain::Field& field) {
+    const int row = table_->rowCount();
+    table_->insertRow(row);
+    setNameItem(row, field);
+    setTypeItem(row, field.type_);
+    table_->setCurrentCell(row, 0);
+    onSelectionChanged();
+}
+
 void SchemaDockWidget::populate(const std::vector<mondoc::domain::Field>& fields) {
     table_->clearContents();
     table_->setRowCount(static_cast<int>(fields.size()));

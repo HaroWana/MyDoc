@@ -36,9 +36,13 @@
 #include <set>
 #include <string>
 
+#include "about_dialog.hpp"
 #include "fill_session_view.hpp"
+#include "import_conflict_dialog.hpp"
+#include "region_mark_viewer.hpp"
 #include "resume_banner.hpp"
 #include "schema_dock_widget.hpp"
+#include "settings_dialog.hpp"
 
 namespace mondoc::ui {
 
@@ -74,11 +78,15 @@ QString pathToQString(const std::filesystem::path& p) {
 MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
                        mondoc::services::FillSessionService& fillService,
                        mondoc::domain::ITemplateRepository& templateRepo,
+                       const mondoc::adapters::ai::LlmConfig& currentConfig,
+                       std::function<void(mondoc::adapters::ai::LlmConfig)> reconfigureLlmCallback,
                        QWidget* parent)
     : QMainWindow(parent),
       service_(templateService),
       fillService_(fillService),
       templateRepo_(templateRepo),
+      currentConfig_(currentConfig),
+      reconfigureLlmCallback_(std::move(reconfigureLlmCallback)),
       templateList_(new QListWidget(this)),
       centralStack_(new QStackedWidget(this)),
       searchBox_(new QLineEdit(this)),
@@ -124,6 +132,19 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
     schemaWidget_->hide();
 
     statusBar();
+
+    // Menu bar
+    auto* fileMenu = menuBar()->addMenu(tr("&File"));
+    exportAction_ = fileMenu->addAction(tr("Export Template\xe2\x80\xa6"), this, &MainWindow::onExportTemplate);
+    exportAction_->setEnabled(false);
+    fileMenu->addAction(tr("Import Template\xe2\x80\xa6"), this, &MainWindow::onImportTemplate);
+
+    auto* editMenu = menuBar()->addMenu(tr("&Edit"));
+    auto* settingsAction = editMenu->addAction(tr("Settings\xe2\x80\xa6"), this, &MainWindow::onSettingsClicked);
+    settingsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
+
+    auto* helpMenu = menuBar()->addMenu(tr("&Help"));
+    helpMenu->addAction(tr("About MonDoc"), this, &MainWindow::onAboutClicked);
 
     auto* tb = addToolBar(tr("Main"));
     tb->setMovable(false);
@@ -378,10 +399,12 @@ void MainWindow::onSchemaDiscarded() {
 void MainWindow::onTemplateSelected(int row) {
     if (row < 0 || row >= static_cast<int>(cachedTemplates_.size())) {
         selectedTemplate_.reset();
+        if (exportAction_) exportAction_->setEnabled(false);
         centralStack_->setCurrentIndex(0);
         return;
     }
     selectedTemplate_ = cachedTemplates_[row];
+    if (exportAction_) exportAction_->setEnabled(true);
     const auto& t = *selectedTemplate_;
     detailNameLabel_->setText(QString::fromStdString(t.name_));
     detailFormatLabel_->setText(
@@ -650,6 +673,75 @@ QString MainWindow::relativeTimestamp(std::int64_t updatedAtUnix) const {
 #endif
     std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tm);
     return QString::fromUtf8(buf);
+}
+
+void MainWindow::onSettingsClicked() {
+    auto* dlg = new SettingsDialog(currentConfig_, this);
+    connect(dlg, &SettingsDialog::settingsSaved, this,
+            [this](mondoc::adapters::ai::LlmConfig cfg) {
+                currentConfig_ = cfg;
+                if (reconfigureLlmCallback_) reconfigureLlmCallback_(std::move(cfg));
+                statusBar()->showMessage(tr("Settings saved."), 3000);
+            });
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->exec();
+}
+
+void MainWindow::onExportTemplate() {
+    if (!selectedTemplate_) return;
+    const QString dest = QFileDialog::getSaveFileName(
+        this, tr("Export Template"), QString{},
+        tr("MonDoc Bundle (*.mondoc)"));
+    if (dest.isEmpty()) return;
+    auto result = service_.exportTemplate(selectedTemplate_->id_, qStringToPath(dest));
+    if (result) {
+        statusBar()->showMessage(tr("Template exported."), 3000);
+    } else {
+        statusBar()->showMessage(
+            tr("Export failed: %1").arg(QString::fromStdString(result.error().message())), 5000);
+    }
+}
+
+void MainWindow::onImportTemplate() {
+    const QString src = QFileDialog::getOpenFileName(
+        this, tr("Import Template"), QString{},
+        tr("MonDoc Bundle (*.mondoc)"));
+    if (src.isEmpty()) return;
+
+    auto result = service_.importTemplate(qStringToPath(src));
+    if (!result) {
+        const std::string msg = result.error().message();
+        if (msg.find("ImportConflict:") != std::string::npos) {
+            const QString name = QString::fromStdString(msg.substr(std::strlen("ImportConflict:")));
+            ImportConflictDialog dlg(name, this);
+            if (dlg.exec() != QDialog::Accepted) return;
+            const bool overwrite = dlg.choice() == ConflictChoice::Overwrite;
+            const bool copy      = dlg.choice() == ConflictChoice::Copy;
+            result = service_.importTemplate(qStringToPath(src), overwrite, copy);
+        }
+        if (!result) {
+            statusBar()->showMessage(
+                tr("Import failed: %1").arg(QString::fromStdString(result.error().message())), 5000);
+            return;
+        }
+    }
+    statusBar()->showMessage(
+        tr("Template \"%1\" imported.").arg(QString::fromStdString(result->name_)), 3000);
+    refreshTemplateList();
+}
+
+void MainWindow::onMarkRegion() {
+    if (!selectedTemplate_) return;
+    RegionMarkViewer dlg(selectedTemplate_->source_path_,
+                         QString::fromStdString(selectedTemplate_->name_), this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    schemaWidget_->addFieldExternal(dlg.field());
+    schemaWidget_->show();
+}
+
+void MainWindow::onAboutClicked() {
+    AboutDialog dlg(this);
+    dlg.exec();
 }
 
 }  // namespace mondoc::ui

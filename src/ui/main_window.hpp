@@ -4,11 +4,13 @@
 #include <QString>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 
 #include "domain/i_template_repository.hpp"
 #include "domain/template.hpp"
 #include "fill_session_service.hpp"
+#include "llm_config.hpp"
 #include "mondoc/id.hpp"
 #include "template_service.hpp"
 
@@ -34,6 +36,8 @@ public:
     explicit MainWindow(mondoc::services::TemplateService& templateService,
                         mondoc::services::FillSessionService& fillService,
                         mondoc::domain::ITemplateRepository& templateRepo,
+                        const mondoc::adapters::ai::LlmConfig& currentConfig,
+                        std::function<void(mondoc::adapters::ai::LlmConfig)> reconfigureLlmCallback,
                         QWidget* parent = nullptr);
 
 protected:
@@ -61,6 +65,12 @@ private slots:
     void onResumeRequested(mondoc::FillSessionId sessionId);
     void onDiscardRequested(mondoc::FillSessionId sessionId);
 
+    void onSettingsClicked();
+    void onExportTemplate();
+    void onImportTemplate();
+    void onMarkRegion();
+    void onAboutClicked();
+
 private:
     void buildSidebar(QWidget* sidebar);
     void buildEmptyState(QWidget* page);
@@ -76,6 +86,9 @@ private:
     mondoc::services::TemplateService& service_;
     mondoc::services::FillSessionService& fillService_;
     mondoc::domain::ITemplateRepository& templateRepo_;
+    mondoc::adapters::ai::LlmConfig currentConfig_;
+    std::function<void(mondoc::adapters::ai::LlmConfig)> reconfigureLlmCallback_;
+    QAction* exportAction_ = nullptr;
 
     QListWidget* templateList_;
     QStackedWidget* centralStack_;

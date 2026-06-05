@@ -1,10 +1,12 @@
 add_library(mondoc_ui STATIC
+    about_dialog.cpp
     ai_fill_worker.cpp
     chat_pane.cpp
     edit_field_command.cpp
     export_dialog.cpp
     field_form_pane.cpp
     fill_session_view.cpp
+    import_conflict_dialog.cpp
     main_window.cpp
     region_mark_viewer.cpp
     resume_banner.cpp
