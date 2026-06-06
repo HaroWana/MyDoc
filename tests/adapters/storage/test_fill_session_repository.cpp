@@ -62,17 +62,17 @@ Fill makeFill(const std::string& fieldId, const std::string& value) {
 
 }  // namespace
 
-TEST_CASE("Migration v5 applies once and is idempotent",
+TEST_CASE("Migrations apply once and are idempotent",
           "[storage.fill_session]") {
     auto conn = SqliteConnection::open(":memory:");
     REQUIRE(conn.has_value());
     auto first = runMigrations(*conn);
     REQUIRE(first.has_value());
-    REQUIRE(*first == 5);
+    REQUIRE(*first == 6);
 
     auto second = runMigrations(*conn);
     REQUIRE(second.has_value());
-    REQUIRE(*second == 5);
+    REQUIRE(*second == 6);
 }
 
 TEST_CASE("SqliteFillSessionRepository: save+findById round-trips a session with fills",
