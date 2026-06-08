@@ -280,8 +280,12 @@ void MainWindow::buildDetailPage(QWidget* page) {
     detailDuplicateBtn_ = new QPushButton(tr("Duplicate Template"), page);
     detailDeleteBtn_ = new QPushButton(tr("Delete Template"), page);
     detailDeleteBtn_->setStyleSheet(QStringLiteral("color: #DC2626;"));
+    auto* markRegionBtn = new QPushButton(tr("Mark Region\xe2\x80\xa6"), page);
+    markRegionBtn->setAccessibleName(tr("Mark a fillable region in the template document"));
+    markRegionBtn->setToolTip(tr("Open the source document and drag to mark a fillable region"));
     actionRow->addWidget(detailRenameBtn_);
     actionRow->addWidget(detailDuplicateBtn_);
+    actionRow->addWidget(markRegionBtn);
     actionRow->addWidget(detailDeleteBtn_);
     actionRow->addStretch(1);
     layout->addLayout(actionRow);
@@ -294,6 +298,8 @@ void MainWindow::buildDetailPage(QWidget* page) {
             this, &MainWindow::onDuplicateTemplate);
     connect(detailDeleteBtn_, &QPushButton::clicked,
             this, &MainWindow::onDeleteTemplate);
+    connect(markRegionBtn, &QPushButton::clicked,
+            this, &MainWindow::onMarkRegion);
 }
 
 void MainWindow::refreshTemplateList() {
