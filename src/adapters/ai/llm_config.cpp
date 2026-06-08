@@ -77,6 +77,15 @@ LlmConfig::saveToJson(const std::filesystem::path& path) const {
             std::string{"write error on config file: "} +
             std::string(reinterpret_cast<const char*>(u8.data()), u8.size())));
     }
+    out.close();
+#if !defined(_WIN32)
+    {
+        std::error_code pec;
+        std::filesystem::permissions(path,
+            std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+            std::filesystem::perm_options::replace, pec);
+    }
+#endif
     return {};
 }
 
