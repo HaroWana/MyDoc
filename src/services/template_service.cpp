@@ -163,20 +163,26 @@ TemplateService::importTemplate(const std::filesystem::path& src,
         int zipErr = 0;
         const std::string zipPath = pathToUtf8(src);
         zip_t* za = zip_open(zipPath.c_str(), ZIP_RDONLY, &zipErr);
-        if (za) {
-            zip_file_t* zf = zip_fopen(za, entryName.c_str(), 0);
-            if (zf) {
-                std::ofstream out(dest, std::ios::binary);
-                std::array<char, 4096> buf{};
-                zip_int64_t nread = 0;
-                while ((nread = zip_fread(zf, buf.data(), buf.size())) > 0) {
-                    out.write(buf.data(), nread);
-                }
-                zip_fclose(zf);
-                tpl.source_path_ = dest;
-            }
-            zip_close(za);
+        if (!za) {
+            return mondoc::unexpected(mondoc::Error::generic(
+                "cannot open bundle for extraction: " + entryName));
         }
+        zip_file_t* zf = zip_fopen(za, entryName.c_str(), 0);
+        if (zf) {
+            std::ofstream out(dest, std::ios::binary);
+            std::array<char, 4096> buf{};
+            zip_int64_t nread = 0;
+            while ((nread = zip_fread(zf, buf.data(), buf.size())) > 0) {
+                out.write(buf.data(), nread);
+            }
+            zip_fclose(zf);
+            tpl.source_path_ = dest;
+        } else {
+            zip_close(za);
+            return mondoc::unexpected(mondoc::Error::generic(
+                "cannot extract source document from bundle: " + entryName));
+        }
+        zip_close(za);
     }
 
     auto saved = repo_.save(tpl);
