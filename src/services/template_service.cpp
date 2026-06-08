@@ -115,6 +115,11 @@ TemplateService::importTemplate(const std::filesystem::path& src,
         }
     }
 
+    if (overwrite && importAsCopy) {
+        return mondoc::unexpected(mondoc::Error::invalidArgument(
+            "overwrite and importAsCopy are mutually exclusive"));
+    }
+
     if (conflictId && !overwrite && !importAsCopy) {
         return mondoc::unexpected(
             mondoc::Error::generic("ImportConflict:" + tpl.name_));
