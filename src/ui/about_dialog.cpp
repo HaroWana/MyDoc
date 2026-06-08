@@ -102,7 +102,7 @@ AboutDialog::AboutDialog(QWidget* parent)
 }
 
 void AboutDialog::onLibrarySelected(int row) {
-    if (row < 0 || row >= libraries_.size()) return;
+    if (row < 0 || static_cast<qsizetype>(row) >= libraries_.size()) return;
     const QString licenseDir =
         QCoreApplication::applicationDirPath() + QStringLiteral("/LICENSES/");
     QFile f(licenseDir + libraries_.at(row).licenseFile);
