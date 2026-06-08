@@ -1,7 +1,9 @@
 ; NSIS installer script for MonDoc v1.0
 ; Requires: windeployqt output in deploy\ directory, LICENSES\ in project root
 !define APP_NAME "MonDoc"
-!define APP_VERSION "1.0.0"
+!ifndef APP_VERSION
+  !define APP_VERSION "1.0.0"
+!endif
 !define APP_PUBLISHER "MonDoc Project"
 OutFile "mondoc-setup.exe"
 InstallDir "$PROGRAMFILES64\MonDoc"
