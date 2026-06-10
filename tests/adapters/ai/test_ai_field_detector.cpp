@@ -142,7 +142,6 @@ TEST_CASE("detect propagates LlmError on transport failure",
 TEST_CASE("detect returns badResponse on malformed content",
           "[adapters.ai][field_detector][phase06]") {
     FakeLlmClient client;
-    // malformed: not a valid JSON completion
     client.enqueueOk(R"({"choices":[{"message":{"content":"not-json"}}]})");
 
     AiFieldDetector detector(client, testConfig());
@@ -151,4 +150,97 @@ TEST_CASE("detect returns badResponse on malformed content",
 
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().kind() == LlmError::Kind::BadResponse);
+}
+
+TEST_CASE("detect returns cancelled when flag is set before call",
+          "[adapters.ai][field_detector][phase06]") {
+    FakeLlmClient client;
+    AiFieldDetector detector(client, testConfig());
+    std::atomic<bool> cancelled{true};
+    auto result = detector.detect("some text", {}, cancelled);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::Cancelled);
+    REQUIRE(client.chatCalls_.empty());
+}
+
+TEST_CASE("detect returns cancelled when flag flips after chat() returns",
+          "[adapters.ai][field_detector][phase06]") {
+    FakeLlmClient client;
+    std::atomic<bool> cancelled{false};
+    nlohmann::json response = {
+        {"new_fields", nlohmann::json::array()},
+        {"improvements", nlohmann::json::array()}
+    };
+    client.enqueueOk(makeChatCompletion(response));
+    client.onAfterCall_ = [&cancelled]() { cancelled.store(true); };
+
+    AiFieldDetector detector(client, testConfig());
+    auto result = detector.detect("some text", {}, cancelled);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::Cancelled);
+}
+
+TEST_CASE("detect caps new_fields at 200 items",
+          "[adapters.ai][field_detector][phase06]") {
+    FakeLlmClient client;
+    nlohmann::json fields = nlohmann::json::array();
+    for (int i = 0; i < 250; ++i) {
+        fields.push_back({{"name", "field_" + std::to_string(i)}, {"type", "text"}});
+    }
+    nlohmann::json response = {
+        {"new_fields", fields},
+        {"improvements", nlohmann::json::array()}
+    };
+    client.enqueueOk(makeChatCompletion(response));
+
+    AiFieldDetector detector(client, testConfig());
+    std::atomic<bool> cancelled{false};
+    auto result = detector.detect("some text", {}, cancelled);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->new_fields.size() == 200);
+}
+
+TEST_CASE("detect skips new_fields items with empty or missing name",
+          "[adapters.ai][field_detector][phase06]") {
+    FakeLlmClient client;
+    nlohmann::json response = {
+        {"new_fields", nlohmann::json::array({
+            nlohmann::json{{"name", ""}, {"type", "text"}},
+            nlohmann::json{{"type", "text"}},
+            nlohmann::json{{"name", "valid_field"}, {"type", "text"}}
+        })},
+        {"improvements", nlohmann::json::array()}
+    };
+    client.enqueueOk(makeChatCompletion(response));
+
+    AiFieldDetector detector(client, testConfig());
+    std::atomic<bool> cancelled{false};
+    auto result = detector.detect("some text", {}, cancelled);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->new_fields.size() == 1);
+    REQUIRE(result->new_fields[0].name_ == "valid_field");
+}
+
+TEST_CASE("detect falls back to FieldType::Text for unknown type value",
+          "[adapters.ai][field_detector][phase06]") {
+    FakeLlmClient client;
+    nlohmann::json response = {
+        {"new_fields", nlohmann::json::array({
+            nlohmann::json{{"name", "some_field"}, {"type", "frobnicate"}}
+        })},
+        {"improvements", nlohmann::json::array()}
+    };
+    client.enqueueOk(makeChatCompletion(response));
+
+    AiFieldDetector detector(client, testConfig());
+    std::atomic<bool> cancelled{false};
+    auto result = detector.detect("some text", {}, cancelled);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->new_fields.size() == 1);
+    REQUIRE(result->new_fields[0].type_ == FieldType::Text);
 }
