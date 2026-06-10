@@ -1,16 +1,23 @@
 #include "template_service.hpp"
 
+#include <pugixml.hpp>
 #include <uuid.h>
 #include <zip.h>
 
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <fstream>
+#include <functional>
+#include <iterator>
 #include <optional>
 #include <random>
 #include <string>
+#include <string_view>
 #include <utility>
+
+#include <podofo/podofo.h>
 
 #include "docx_document_reader.hpp"
 #include "mondoc_bundle_reader.hpp"
@@ -47,29 +54,204 @@ std::string pathToUtf8(const std::filesystem::path& p) {
     return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
 }
 
+constexpr std::uintmax_t kMaxSourceBytes = 50ULL * 1024 * 1024;
+
+void collectParagraphText(const pugi::xml_node& node, std::string& para) {
+    for (pugi::xml_node child : node.children()) {
+        if (std::string_view{child.name()} == "w:t") {
+            para += child.child_value();
+        }
+        collectParagraphText(child, para);
+    }
+}
+
+void collectWtTextRecursive(const pugi::xml_node& node,
+                            std::string& out,
+                            bool& firstParagraph) {
+    for (pugi::xml_node child : node.children()) {
+        if (std::string_view{child.name()} == "w:p") {
+            if (!firstParagraph) out += '\n';
+            firstParagraph = false;
+            std::string para;
+            collectParagraphText(child, para);
+            out += para;
+        } else {
+            collectWtTextRecursive(child, out, firstParagraph);
+        }
+    }
+}
+
+std::string extractDocxTextFromXml(const std::string& xml) {
+    pugi::xml_document doc;
+    auto pr = doc.load_buffer(xml.data(), xml.size());
+    if (pr.status != pugi::status_ok) return {};
+    std::string out;
+    bool firstParagraph = true;
+    collectWtTextRecursive(doc, out, firstParagraph);
+    return out;
+}
+
+std::string extractOdtTextFromXml(const std::string& xml) {
+    pugi::xml_document doc;
+    auto pr = doc.load_buffer(xml.data(), xml.size());
+    if (pr.status != pugi::status_ok) return {};
+    std::string out;
+    std::function<void(pugi::xml_node)> collectText;
+    collectText = [&](pugi::xml_node node) {
+        for (pugi::xml_node child : node.children()) {
+            std::string_view n{child.name()};
+            if (n == "text:p") {
+                if (!out.empty()) out += '\n';
+                std::string para;
+                std::function<void(pugi::xml_node)> collectPara;
+                collectPara = [&](pugi::xml_node pNode) {
+                    for (pugi::xml_node c : pNode.children()) {
+                        std::string_view cn{c.name()};
+                        if (cn == "text:span") {
+                            para += c.child_value();
+                            collectPara(c);
+                        } else if (std::string_view{c.name()}.empty()) {
+                            para += c.value();
+                        }
+                    }
+                };
+                para += child.child_value();
+                collectPara(child);
+                out += para;
+            } else {
+                collectText(child);
+            }
+        }
+    };
+    collectText(doc);
+    return out;
+}
+
+// Reads all bytes from a zip entry up to kMaxSourceBytes. Returns empty on error.
+std::string readZipEntry(const std::filesystem::path& path, const char* entryName) {
+    int errCode = 0;
+    const std::string nativePath = pathToUtf8(path);
+    zip_t* zf = zip_open(nativePath.c_str(), ZIP_RDONLY, &errCode);
+    if (!zf) return {};
+
+    zip_stat_t st;
+    zip_stat_init(&st);
+    if (zip_stat(zf, entryName, 0, &st) < 0) {
+        zip_discard(zf);
+        return {};
+    }
+    if ((st.valid & ZIP_STAT_SIZE) && st.size > kMaxSourceBytes) {
+        zip_discard(zf);
+        return {};
+    }
+    zip_file_t* entry = zip_fopen(zf, entryName, 0);
+    if (!entry) {
+        zip_discard(zf);
+        return {};
+    }
+    std::string xml;
+    if ((st.valid & ZIP_STAT_SIZE) && st.size <= kMaxSourceBytes) {
+        xml.resize(static_cast<std::size_t>(st.size));
+        zip_int64_t got = zip_fread(entry, xml.data(), st.size);
+        zip_fclose(entry);
+        zip_discard(zf);
+        if (got < 0) return {};
+        xml.resize(static_cast<std::size_t>(got));
+    } else {
+        constexpr std::size_t kChunkSize = 64 * 1024;
+        std::array<char, kChunkSize> buf{};
+        for (;;) {
+            zip_int64_t got = zip_fread(entry, buf.data(), buf.size());
+            if (got < 0) { zip_fclose(entry); zip_discard(zf); return {}; }
+            if (got == 0) break;
+            if (xml.size() + static_cast<std::size_t>(got) > kMaxSourceBytes) {
+                zip_fclose(entry);
+                zip_discard(zf);
+                return {};
+            }
+            xml.append(buf.data(), static_cast<std::size_t>(got));
+        }
+        zip_fclose(entry);
+        zip_discard(zf);
+    }
+    return xml;
+}
+
+std::string extractDocxPlainText(const std::filesystem::path& path) {
+    const std::string xml = readZipEntry(path, "word/document.xml");
+    if (xml.empty()) return {};
+    return extractDocxTextFromXml(xml);
+}
+
+std::string extractOdtPlainText(const std::filesystem::path& path) {
+    const std::string xml = readZipEntry(path, "content.xml");
+    if (xml.empty()) return {};
+    return extractOdtTextFromXml(xml);
+}
+
+std::string extractPdfPlainText(const std::filesystem::path& path) {
+    try {
+        PoDoFo::PdfMemDocument document;
+        document.Load(pathToUtf8(path));
+        std::string text;
+        unsigned count = document.GetPages().GetCount();
+        for (unsigned i = 0; i < count; i++) {
+            auto& page = document.GetPages().GetPageAt(i);
+            std::vector<PoDoFo::PdfTextEntry> entries;
+            page.ExtractTextTo(entries);
+            for (auto& e : entries) {
+                text += e.Text;
+                text += ' ';
+            }
+            text += '\n';
+        }
+        return text;
+    } catch (...) {
+        return {};
+    }
+}
+
+std::string extractPlainFileText(const std::filesystem::path& path) {
+    std::error_code ec;
+    auto fileSize = std::filesystem::file_size(path, ec);
+    if (ec || fileSize > kMaxSourceBytes) return {};
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return {};
+    return std::string{std::istreambuf_iterator<char>{in},
+                       std::istreambuf_iterator<char>{}};
+}
+
 }  // namespace
 
 TemplateService::TemplateService(mondoc::domain::ITemplateRepository& repo) noexcept
     : repo_(repo) {}
 
-mondoc::expected<mondoc::domain::Template, mondoc::Error>
+mondoc::expected<DraftWithText, mondoc::Error>
 TemplateService::extractDraft(const std::filesystem::path& path) {
     const std::string ext = lowercaseExtension(path);
     if (ext == ".docx") {
         mondoc::adapters::formats::DocxDocumentReader reader;
-        return reader.read(path);
+        auto draft = reader.read(path);
+        if (!draft) return mondoc::unexpected(draft.error());
+        return DraftWithText{std::move(*draft), extractDocxPlainText(path)};
     }
     if (ext == ".txt" || ext == ".md") {
         mondoc::adapters::formats::PlainTextDocumentReader reader;
-        return reader.read(path);
+        auto draft = reader.read(path);
+        if (!draft) return mondoc::unexpected(draft.error());
+        return DraftWithText{std::move(*draft), extractPlainFileText(path)};
     }
     if (ext == ".odt") {
         mondoc::adapters::formats::OdtDocumentReader reader;
-        return reader.read(path);
+        auto draft = reader.read(path);
+        if (!draft) return mondoc::unexpected(draft.error());
+        return DraftWithText{std::move(*draft), extractOdtPlainText(path)};
     }
     if (ext == ".pdf") {
         mondoc::adapters::formats::PdfDocumentReader reader;
-        return reader.read(path);
+        auto draft = reader.read(path);
+        if (!draft) return mondoc::unexpected(draft.error());
+        return DraftWithText{std::move(*draft), extractPdfPlainText(path)};
     }
     return mondoc::unexpected(mondoc::Error::invalidArgument(
         std::string{"Unsupported format: "} + ext));
