@@ -18,11 +18,16 @@ struct ImportConflictInfo {
     std::string conflicting_name;
 };
 
+struct DraftWithText {
+    mondoc::domain::Template draft;
+    std::string document_text;
+};
+
 class TemplateService {
 public:
     explicit TemplateService(mondoc::domain::ITemplateRepository& repo) noexcept;
 
-    mondoc::expected<mondoc::domain::Template, mondoc::Error>
+    mondoc::expected<DraftWithText, mondoc::Error>
     extractDraft(const std::filesystem::path& path);
 
     mondoc::expected<void, mondoc::Error>

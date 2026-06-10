@@ -371,7 +371,8 @@ void MainWindow::triggerRegistration(const std::filesystem::path& path) {
         return;
     }
 
-    pendingTemplate_ = std::move(*result);
+    pendingTemplate_ = std::move(result->draft);
+    pendingDocumentText_ = std::move(result->document_text);
     const QString name = QString::fromStdString(pendingTemplate_.name_).left(40);
     schemaWidget_->setWindowTitle(tr("Schema \xe2\x80\x94 %1").arg(name));
     schemaWidget_->populate(pendingTemplate_.fields_);

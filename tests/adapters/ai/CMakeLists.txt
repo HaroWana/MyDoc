@@ -29,3 +29,9 @@ target_link_libraries(tests_adapters_ai_confidence
     PRIVATE mondoc_adapters_ai Catch2::Catch2WithMain)
 add_test(NAME ai.confidence_parse COMMAND tests_adapters_ai_confidence)
 set_tests_properties(ai.confidence_parse PROPERTIES LABELS phase03)
+
+add_executable(tests_adapters_ai_field_detector test_ai_field_detector.cpp)
+target_link_libraries(tests_adapters_ai_field_detector
+    PRIVATE mondoc_adapters_ai Catch2::Catch2WithMain)
+add_test(NAME ai.field_detector COMMAND tests_adapters_ai_field_detector)
+set_tests_properties(ai.field_detector PROPERTIES LABELS phase06)

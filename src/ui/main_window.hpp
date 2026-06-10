@@ -107,6 +107,7 @@ private:
     QPushButton* detailDeleteBtn_;
 
     mondoc::domain::Template pendingTemplate_;
+    std::string pendingDocumentText_;
     std::optional<mondoc::domain::Template> selectedTemplate_;
     std::vector<mondoc::domain::Template> cachedTemplates_;
 };

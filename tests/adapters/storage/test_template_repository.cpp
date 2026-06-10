@@ -289,3 +289,22 @@ TEST_CASE("SqliteTemplateRepository: FieldLocation TextLocation round-trips [pha
     REQUIRE(loaded->fields_[0].location_->text->paragraph_index == 3);
     REQUIRE(loaded->fields_[0].location_->text->char_offset == 12);
 }
+
+TEST_CASE("SqliteTemplateRepository: FieldOrigin::Ai round-trips through storage",
+          "[adapters.storage][template_repo][aifd-03][phase06]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    REQUIRE(runMigrations(*conn).has_value());
+    SqliteTemplateRepository repo(*conn);
+
+    auto t = makeTemplate("t1", "Invoice");
+    auto f = makeField("f1", "detected_field");
+    f.origin_ = mondoc::domain::FieldOrigin::Ai;
+    t.fields_.push_back(std::move(f));
+    REQUIRE(repo.save(t).has_value());
+
+    auto loaded = repo.findById(mondoc::TemplateId{"t1"});
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->fields_.size() == 1);
+    REQUIRE(loaded->fields_[0].origin_ == mondoc::domain::FieldOrigin::Ai);
+}

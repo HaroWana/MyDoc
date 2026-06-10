@@ -137,8 +137,8 @@ TEST_CASE("TemplateService: extractDraft reads a .txt file and returns Template 
     auto result = svc.extractDraft(tmp.path);
 
     REQUIRE(result.has_value());
-    REQUIRE(result->fields_.size() == 1);
-    REQUIRE(result->fields_[0].name_ == "field_one");
+    REQUIRE(result->draft.fields_.size() == 1);
+    REQUIRE(result->draft.fields_[0].name_ == "field_one");
 }
 
 TEST_CASE("TemplateService: saveTemplate persists to repository",
