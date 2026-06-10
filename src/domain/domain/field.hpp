@@ -13,6 +13,7 @@ enum class FieldOrigin {
     Unknown,      // default — placeholder pass in ODT writer
     FormControl,  // form:* element in ODT content.xml
     Placeholder,  // detected via {{}} / [] / <> regex scan
+    Ai,           // Phase 6: proposed by LLM, pending accept/discard
 };
 
 struct PdfLocation {
