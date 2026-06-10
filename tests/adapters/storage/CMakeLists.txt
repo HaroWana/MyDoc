@@ -18,3 +18,8 @@ add_test(NAME storage.fill_session_repo
          COMMAND tests_adapters_storage_fill_session
          "[adapters.storage][fill_session_repo][phase03]")
 set_tests_properties(storage.fill_session_repo PROPERTIES LABELS phase03)
+
+add_test(NAME storage.template_repo_ai
+         COMMAND tests_adapters_storage_template_repository
+         "[adapters.storage][template_repo][phase06]")
+set_tests_properties(storage.template_repo_ai PROPERTIES LABELS phase06)
