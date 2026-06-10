@@ -349,6 +349,11 @@ std::optional<mondoc::TemplateId> MainWindow::selectedTemplateId() const {
     return mondoc::TemplateId{idStr.toStdString()};
 }
 
+void MainWindow::setAiFieldDetector(mondoc::adapters::ai::AiFieldDetector* detector) {
+    schemaWidget_->setDetector(detector);
+    schemaWidget_->setAiConfigured(detector != nullptr);
+}
+
 void MainWindow::onRegisterClicked() {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Register Template"), QString{},
@@ -375,6 +380,7 @@ void MainWindow::triggerRegistration(const std::filesystem::path& path) {
     pendingDocumentText_ = std::move(result->document_text);
     const QString name = QString::fromStdString(pendingTemplate_.name_).left(40);
     schemaWidget_->setWindowTitle(tr("Schema \xe2\x80\x94 %1").arg(name));
+    schemaWidget_->setDocumentText(pendingDocumentText_);
     schemaWidget_->populate(pendingTemplate_.fields_);
     schemaWidget_->show();
     schemaWidget_->raise();

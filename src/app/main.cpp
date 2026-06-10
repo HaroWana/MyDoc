@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <utility>
 
+#include "ai_field_detect_worker.hpp"
 #include "ai_fill_worker.hpp"
 #include "chat_pane.hpp"
 #include "composition_root.hpp"
@@ -22,6 +23,8 @@ int main(int argc, char* argv[]) {
 
     qRegisterMetaType<std::vector<mondoc::domain::Fill>>();
     qRegisterMetaType<std::vector<mondoc::services::AiExtractedFact>>();
+    qRegisterMetaType<std::vector<mondoc::domain::Field>>();
+    qRegisterMetaType<std::vector<mondoc::adapters::ai::FieldImprovement>>();
 
     const QString appDataDirQs =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -68,9 +71,11 @@ int main(int argc, char* argv[]) {
                                   root.fill_session_service_,
                                   root.repo_,
                                   root.config(),
-                                  [&root](mondoc::adapters::ai::LlmConfig cfg) {
+                                  [&root, &window](mondoc::adapters::ai::LlmConfig cfg) {
                                       root.reconfigureLlm(std::move(cfg));
+                                      window.setAiFieldDetector(root.ai_field_detector_.get());
                                   }};
+    window.setAiFieldDetector(root.ai_field_detector_.get());
     window.resize(1024, 768);
     window.show();
 
