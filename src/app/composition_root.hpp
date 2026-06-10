@@ -3,6 +3,7 @@
 #include <memory>
 #include <utility>
 
+#include "ai_field_detector.hpp"
 #include "ai_fill_pipeline.hpp"
 #include "fill_session_service.hpp"
 #include "llm_client.hpp"
@@ -31,6 +32,7 @@ struct CompositionRoot {
     mondoc::services::TemplateService service_;
     std::unique_ptr<mondoc::adapters::ai::LlmClient> llm_client_;
     std::unique_ptr<mondoc::adapters::ai::AiFillPipeline> ai_pipeline_;
+    std::unique_ptr<mondoc::adapters::ai::AiFieldDetector> ai_field_detector_;
     mondoc::services::FillSessionService fill_session_service_;
 
 private:

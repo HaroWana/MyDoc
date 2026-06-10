@@ -7,6 +7,7 @@
 #include <functional>
 #include <optional>
 
+#include "ai_field_detector.hpp"
 #include "domain/i_template_repository.hpp"
 #include "domain/template.hpp"
 #include "fill_session_service.hpp"
@@ -39,6 +40,8 @@ public:
                         const mondoc::adapters::ai::LlmConfig& currentConfig,
                         std::function<void(mondoc::adapters::ai::LlmConfig)> reconfigureLlmCallback,
                         QWidget* parent = nullptr);
+
+    void setAiFieldDetector(mondoc::adapters::ai::AiFieldDetector* detector);
 
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
