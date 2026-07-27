@@ -26,6 +26,7 @@ mondoc::expected<void, mondoc::Error>
 PdfDocumentWriter::write(const mondoc::domain::Template& tpl,
                          const std::vector<mondoc::domain::Fill>& fills,
                          const std::filesystem::path& dest) {
+    bool destWritten = false;
     try {
         PoDoFo::PdfMemDocument document;
         auto& page = document.GetPages().CreatePage(
@@ -35,8 +36,6 @@ PdfDocumentWriter::write(const mondoc::domain::Template& tpl,
         params.AutoSelect = PoDoFo::PdfFontAutoSelectBehavior::Standard14;
         auto* font = document.GetFonts().SearchFont("Helvetica", params);
         if (!font) {
-            std::error_code ec;
-            std::filesystem::remove(dest, ec);
             return mondoc::unexpected(mondoc::Error::generic(
                 "podofo: Helvetica font not found"));
         }
@@ -75,16 +74,21 @@ PdfDocumentWriter::write(const mondoc::domain::Template& tpl,
         }
 
         painter.FinishDrawing();
+        destWritten = true;
         document.Save(pathToUtf8(dest));
         return {};
     } catch (const PoDoFo::PdfError& e) {
-        std::error_code ec;
-        std::filesystem::remove(dest, ec);
+        if (destWritten) {
+            std::error_code ec;
+            std::filesystem::remove(dest, ec);
+        }
         return mondoc::unexpected(mondoc::Error::generic(
             std::string{"podofo: "} + e.what()));
     } catch (const std::exception& e) {
-        std::error_code ec;
-        std::filesystem::remove(dest, ec);
+        if (destWritten) {
+            std::error_code ec;
+            std::filesystem::remove(dest, ec);
+        }
         return mondoc::unexpected(mondoc::Error::generic(
             std::string{"podofo: "} + e.what()));
     }

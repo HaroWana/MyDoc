@@ -4,6 +4,8 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <random>
 #include <string>
 #include <string_view>
@@ -117,4 +119,30 @@ TEST_CASE("PdfDocumentWriter: succeeds when template source_path_ is empty",
     std::vector<Fill> fills{{FieldId{"f1"}, "x", {}}};
     auto result = PdfDocumentWriter{}.write(tpl, fills, tmp.path);
     REQUIRE(result.has_value());
+}
+
+TEST_CASE("PdfDocumentWriter: does not delete a pre-existing dest file on a pre-Save failure",
+          "[formats.pdf_writer]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    const std::string preExistingContent = "pre-existing user file, not ours to touch";
+    {
+        std::ofstream out(tmp.path, std::ios::binary);
+        out << preExistingContent;
+    }
+
+    Template tpl;
+    tpl.id_ = TemplateId{"t1"};
+    // Standard14 Helvetica can't encode CJK/emoji glyphs: DrawText throws
+    // before document.Save() is ever reached.
+    tpl.name_ = "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E \xF0\x9F\x98\x80"; // "日本語 😀"
+    std::vector<Fill> fills{{FieldId{"f1"}, "x", {}}};
+
+    auto result = PdfDocumentWriter{}.write(tpl, fills, tmp.path);
+    REQUIRE_FALSE(result.has_value());
+
+    REQUIRE(std::filesystem::exists(tmp.path));
+    std::ifstream in(tmp.path, std::ios::binary);
+    const std::string afterContent{std::istreambuf_iterator<char>{in},
+                                   std::istreambuf_iterator<char>{}};
+    REQUIRE(afterContent == preExistingContent);
 }

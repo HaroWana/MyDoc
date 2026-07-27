@@ -24,6 +24,7 @@ namespace mondoc::adapters::formats {
 namespace {
 
 constexpr std::uint64_t kMaxSourceBytes = 50ULL * 1024 * 1024;  // 50 MB
+constexpr int kMaxXmlDepth = 256;
 
 mondoc::expected<std::string, mondoc::Error>
 readEntryFromArchive(const std::filesystem::path& path, const char* entryName) {
@@ -41,36 +42,40 @@ readEntryFromArchive(const std::filesystem::path& path, const char* entryName) {
     return data;
 }
 
-void collectParagraphText(const pugi::xml_node& node, std::string& para) {
+void collectParagraphText(const pugi::xml_node& node, std::string& para, int depth = 0) {
+    if (depth > kMaxXmlDepth) return;
     for (pugi::xml_node child : node.children()) {
         if (std::string_view{child.name()} == "w:t") {
             para += child.child_value();
         }
-        collectParagraphText(child, para);
+        collectParagraphText(child, para, depth + 1);
     }
 }
 
 void collectWtTextRecursive(const pugi::xml_node& node,
                             std::string& out,
-                            bool& firstParagraph) {
+                            bool& firstParagraph,
+                            int depth = 0) {
+    if (depth > kMaxXmlDepth) return;
     for (pugi::xml_node child : node.children()) {
         if (std::string_view{child.name()} == "w:p") {
             if (!firstParagraph) out += '\n';
             firstParagraph = false;
             collectParagraphText(child, out);
         } else {
-            collectWtTextRecursive(child, out, firstParagraph);
+            collectWtTextRecursive(child, out, firstParagraph, depth + 1);
         }
     }
 }
 
-void collectOdtParagraphs(const pugi::xml_node& node, std::string& out) {
+void collectOdtParagraphs(const pugi::xml_node& node, std::string& out, int depth = 0) {
+    if (depth > kMaxXmlDepth) return;
     for (pugi::xml_node child : node.children()) {
         if (std::string_view{child.name()} == "text:p") {
             detail::appendOdtText(child, out);
             out += '\n';
         } else {
-            collectOdtParagraphs(child, out);
+            collectOdtParagraphs(child, out, depth + 1);
         }
     }
 }

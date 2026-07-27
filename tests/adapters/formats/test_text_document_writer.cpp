@@ -1,7 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 
+#if !defined(_WIN32)
 #include <csignal>
 #include <sys/resource.h>
+#endif
 
 #include <chrono>
 #include <filesystem>
@@ -168,6 +170,7 @@ TEST_CASE("TextDocumentWriter: substitution never re-scans inserted values",
     REQUIRE(readFile(dst.path) == "Name: John [note] Smith Note: SECRET");
 }
 
+#if !defined(_WIN32)
 TEST_CASE("TextDocumentWriter: removes dest and reports failure when the write cannot be flushed",
           "[formats.text_writer]") {
     TempFile src{uniqueTempPath(".txt")};
@@ -180,7 +183,7 @@ TEST_CASE("TextDocumentWriter: removes dest and reports failure when the write c
 
     // Force any write beyond the file-size limit to fail with EFBIG instead
     // of the default action of killing the process with SIGXFSZ.
-    ::signal(SIGXFSZ, SIG_IGN);
+    auto oldHandler = ::signal(SIGXFSZ, SIG_IGN);
     struct rlimit oldLimit {};
     ::getrlimit(RLIMIT_FSIZE, &oldLimit);
     struct rlimit rl {0, oldLimit.rlim_max};
@@ -189,10 +192,12 @@ TEST_CASE("TextDocumentWriter: removes dest and reports failure when the write c
     auto r = TextDocumentWriter{}.write(tpl, fills, dst.path);
 
     ::setrlimit(RLIMIT_FSIZE, &oldLimit);
+    ::signal(SIGXFSZ, oldHandler);
 
     REQUIRE_FALSE(r.has_value());
     REQUIRE_FALSE(std::filesystem::exists(dst.path));
 }
+#endif
 
 TEST_CASE("TextDocumentWriter: .md template substitution byte-matches .txt",
           "[formats.text_writer]") {
