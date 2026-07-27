@@ -8,6 +8,7 @@
 #include <SQLiteCpp/Transaction.h>
 
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -65,6 +66,7 @@ SqliteFillSessionRepository::SqliteFillSessionRepository(SqliteConnection& conn)
 
 mondoc::expected<void, mondoc::Error>
 SqliteFillSessionRepository::save(const mondoc::domain::FillSession& s) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         SQLite::Transaction tx(db);
@@ -138,6 +140,7 @@ SqliteFillSessionRepository::save(const mondoc::domain::FillSession& s) {
 
 mondoc::expected<mondoc::domain::FillSession, mondoc::Error>
 SqliteFillSessionRepository::findById(const mondoc::FillSessionId& id) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         mondoc::domain::FillSession s;
@@ -197,6 +200,7 @@ SqliteFillSessionRepository::findById(const mondoc::FillSessionId& id) {
 
 mondoc::expected<std::vector<mondoc::domain::FillSession>, mondoc::Error>
 SqliteFillSessionRepository::listDrafts() {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         std::vector<mondoc::domain::FillSession> out;
@@ -265,6 +269,7 @@ SqliteFillSessionRepository::listDrafts() {
 
 mondoc::expected<void, mondoc::Error>
 SqliteFillSessionRepository::remove(const mondoc::FillSessionId& id) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         SQLite::Statement del(db, "DELETE FROM fill_sessions WHERE id = ?");
@@ -284,6 +289,7 @@ mondoc::expected<void, mondoc::Error>
 SqliteFillSessionRepository::upsertValue(const mondoc::FillSessionId& sessionId,
                                           const mondoc::FieldId& fieldId,
                                           const std::string& value) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         const auto now = static_cast<int64_t>(unixNowSeconds());
@@ -319,6 +325,7 @@ mondoc::expected<void, mondoc::Error>
 SqliteFillSessionRepository::upsertConfidence(const mondoc::FillSessionId& sessionId,
                                                const mondoc::FieldId& fieldId,
                                                mondoc::domain::Confidence confidence) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         const auto now = static_cast<int64_t>(unixNowSeconds());
@@ -354,6 +361,7 @@ mondoc::expected<void, mondoc::Error>
 SqliteFillSessionRepository::replaceSourceRefs(const mondoc::FillSessionId& sessionId,
                                                 const mondoc::FieldId& fieldId,
                                                 const std::vector<mondoc::domain::SourceRef>& refs) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         SQLite::Transaction tx(db);

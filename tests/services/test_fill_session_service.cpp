@@ -624,6 +624,37 @@ TEST_CASE("FillSessionService::aiFill: manual-sticky fill is preserved (REVW-05)
     }
 }
 
+TEST_CASE("FillSessionService::aiFill: does not overwrite a manual value entered during the run (DSA-4)",
+          "[services.fill_session][adapters.ai][dsa-4]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing);  // f1 empty at snapshot time
+
+    FakeLlmClient fake;
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    fake.enqueueOk(canonicalPass1());
+    fake.enqueueOk(canonicalPass2());
+    fake.onAfterCall_ = [&] {
+        (void)svc.setFieldValue(FillSessionId{"s1"}, FieldId{"f1"}, "USER TYPED");
+    };
+
+    std::atomic<bool> cancelled{false};
+    auto r = svc.aiFill(FillSessionId{"s1"}, {}, "", cancelled);
+
+    REQUIRE(r.has_value());
+    const auto& stored = fillRepo.store_["s1"].fills_;
+    auto valueOf = [&](const std::string& fid) {
+        for (const auto& f : stored)
+            if (f.field_id_.value() == fid) return f.current_value_;
+        return std::string{};
+    };
+    REQUIRE(valueOf("f1") == "USER TYPED");
+}
+
 TEST_CASE("FillSessionService::aiFill: LlmError::Cancelled classifies as Cancelled",
           "[services.fill_session][adapters.ai][revw-08]") {
     FakeFillRepo fillRepo;

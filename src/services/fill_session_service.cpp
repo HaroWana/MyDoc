@@ -99,8 +99,14 @@ FillSessionService::aiFill(const mondoc::FillSessionId& sessionId,
     std::vector<mondoc::domain::Fill> out;
     out.reserve(pipeResult->size());
     for (const auto& aiFill : *pipeResult) {
+        // Re-fetch the field's current state right before the upsert: the LLM
+        // call above can take a long time, and the user may have typed a
+        // manual value into this field while it was running. The pre-call
+        // snapshot (sessionRes) would not see that edit.
+        auto freshSession = sessionRepo_.findById(sessionId);
+        if (!freshSession) return mondoc::unexpected(freshSession.error());
         const mondoc::domain::Fill* existing = nullptr;
-        for (const auto& f : sessionRes->fills_) {
+        for (const auto& f : freshSession->fills_) {
             if (f.field_id_ == aiFill.field_id_) {
                 existing = &f;
                 break;

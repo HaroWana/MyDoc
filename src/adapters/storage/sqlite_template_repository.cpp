@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -118,6 +119,7 @@ SqliteTemplateRepository::SqliteTemplateRepository(SqliteConnection& conn) noexc
 
 mondoc::expected<void, mondoc::Error>
 SqliteTemplateRepository::save(const mondoc::domain::Template& t) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         SQLite::Transaction tx(db);
@@ -183,6 +185,7 @@ SqliteTemplateRepository::save(const mondoc::domain::Template& t) {
 
 mondoc::expected<mondoc::domain::Template, mondoc::Error>
 SqliteTemplateRepository::findById(const mondoc::TemplateId& id) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         mondoc::domain::Template t;
@@ -227,6 +230,7 @@ SqliteTemplateRepository::findById(const mondoc::TemplateId& id) {
 
 mondoc::expected<std::vector<mondoc::domain::Template>, mondoc::Error>
 SqliteTemplateRepository::listAll() {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         std::vector<mondoc::domain::Template> out;
@@ -276,6 +280,7 @@ SqliteTemplateRepository::listAll() {
 
 mondoc::expected<void, mondoc::Error>
 SqliteTemplateRepository::remove(const mondoc::TemplateId& id) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
     auto& db = conn_.raw();
     try {
         SQLite::Statement del(db, "DELETE FROM templates WHERE id = ?");

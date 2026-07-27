@@ -14,7 +14,7 @@ SqliteConnection::open(const std::filesystem::path& dbPath) {
     try {
         auto db = std::make_unique<SQLite::Database>(
             pathToUtf8(dbPath),
-            SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+            SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE | SQLite::OPEN_FULLMUTEX);
 
         try {
             db->exec("PRAGMA journal_mode = WAL;");
