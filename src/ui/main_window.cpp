@@ -54,6 +54,8 @@ constexpr int kTemplateIdRole = Qt::UserRole + 1;
 const std::set<QString>& acceptedExtensions() {
     static const std::set<QString> exts{
         QStringLiteral("docx"),
+        QStringLiteral("odt"),
+        QStringLiteral("pdf"),
         QStringLiteral("txt"),
         QStringLiteral("md"),
     };
@@ -357,7 +359,7 @@ void MainWindow::setAiFieldDetector(mondoc::adapters::ai::AiFieldDetector* detec
 void MainWindow::onRegisterClicked() {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Register Template"), QString{},
-        tr("Documents (*.docx *.txt *.md)"));
+        tr("Documents (*.docx *.odt *.pdf *.txt *.md)"));
     if (path.isEmpty()) return;
     triggerRegistration(qStringToPath(path));
 }
@@ -371,7 +373,7 @@ void MainWindow::triggerRegistration(const std::filesystem::path& path) {
     if (!result) {
         statusBar()->showMessage(
             tr("Could not read %1. The file may be corrupted or unsupported. "
-               "Try converting to .docx, .txt, or .md first.")
+               "Try converting to .docx, .odt, .pdf, .txt, or .md first.")
                 .arg(info.fileName()));
         return;
     }
@@ -545,7 +547,7 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
     if (!event->mimeData()->hasUrls()) return;
     if (!acceptableDrop(event->mimeData()->urls())) {
         statusBar()->showMessage(
-            tr("Unsupported file type. Drop a .docx, .txt, or .md file."));
+            tr("Unsupported file type. Drop a .docx, .odt, .pdf, .txt, or .md file."));
         return;
     }
     statusBar()->showMessage(tr("Drop to register as a template"));
