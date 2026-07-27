@@ -1,3 +1,4 @@
+// Qt entry point — the one intentional Qt include site outside src/ui (architecture rule exemption).
 #include <QApplication>
 #include <QDir>
 #include <QMessageBox>

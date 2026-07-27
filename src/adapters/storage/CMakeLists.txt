@@ -8,7 +8,7 @@ add_library(mondoc_adapters_storage STATIC
 target_include_directories(mondoc_adapters_storage PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_compile_features(mondoc_adapters_storage PUBLIC cxx_std_20)
+target_compile_features(mondoc_adapters_storage PUBLIC cxx_std_23)
 
 target_link_libraries(mondoc_adapters_storage
     PUBLIC mondoc_domain SQLiteCpp

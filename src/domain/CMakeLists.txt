@@ -19,7 +19,7 @@ set_target_properties(mondoc_domain PROPERTIES LINKER_LANGUAGE CXX)
 target_include_directories(mondoc_domain PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_compile_features(mondoc_domain PUBLIC cxx_std_20)
+target_compile_features(mondoc_domain PUBLIC cxx_std_23)
 
 # When std::expected is unavailable at compile time, fall back to tl::expected.
 # The bridge header at mondoc/expected.hpp picks the include via __cpp_lib_expected.
