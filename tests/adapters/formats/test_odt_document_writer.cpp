@@ -97,6 +97,20 @@ constexpr std::string_view kFormControlXml = R"XML(<?xml version="1.0"?>
 
 }  // namespace
 
+TEST_CASE("OdtDocumentWriter: rejects empty source_path_ with invalidArgument",
+          "[formats.odt_writer]") {
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"empty-src"};
+    tpl.name_          = "test";
+    tpl.source_format_ = "odt";
+
+    TempFile destTmp{uniqueTempPath(".odt")};
+    OdtDocumentWriter writer;
+    auto result = writer.write(tpl, {}, destTmp.path);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == mondoc::Error::Kind::InvalidArgument);
+}
+
 TEST_CASE("[EXPO-02] OdtDocumentWriter: does not mutate template file",
           "[formats.odt_writer]") {
     TempFile srcTmp{uniqueTempPath(".odt")};

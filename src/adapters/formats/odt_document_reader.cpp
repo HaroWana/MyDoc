@@ -23,6 +23,7 @@ namespace mondoc::adapters::formats {
 namespace {
 
 constexpr std::uint64_t kMaxOdtBytes = 50ULL * 1024 * 1024;
+constexpr int kMaxXmlDepth = 256;
 
 using detail::normalize;
 
@@ -39,12 +40,13 @@ void extractFormControls(const pugi::xml_document& doc,
                              .child("office:text")
                              .child("office:forms");
 
-    std::function<void(pugi::xml_node)> traverseForm;
-    traverseForm = [&](pugi::xml_node formNode) {
+    std::function<void(pugi::xml_node, int)> traverseForm;
+    traverseForm = [&](pugi::xml_node formNode, int depth) {
+        if (depth > kMaxXmlDepth) return;
         for (pugi::xml_node child : formNode.children()) {
             std::string_view childName{child.name()};
             if (childName == "form:form") {
-                traverseForm(child);
+                traverseForm(child, depth + 1);
                 continue;
             }
             mondoc::domain::FieldType type;
@@ -73,7 +75,7 @@ void extractFormControls(const pugi::xml_document& doc,
         }
     };
     for (pugi::xml_node formNode : body.children("form:form")) {
-        traverseForm(formNode);
+        traverseForm(formNode, 0);
     }
 }
 
@@ -90,13 +92,14 @@ void scanPlaceholders(const std::string& text,
     }
 }
 
-void collectTextParagraphs(const pugi::xml_node& node, std::string& out) {
+void collectTextParagraphs(const pugi::xml_node& node, std::string& out, int depth = 0) {
+    if (depth > kMaxXmlDepth) return;
     for (pugi::xml_node child : node.children()) {
         if (std::string_view{child.name()} == "text:p") {
             detail::appendOdtText(child, out);
             out += ' ';
         } else {
-            collectTextParagraphs(child, out);
+            collectTextParagraphs(child, out, depth + 1);
         }
     }
 }
@@ -147,7 +150,11 @@ OdtDocumentReader::read(const std::filesystem::path& path) {
 
     std::error_code sizeEc;
     auto sz = std::filesystem::file_size(path, sizeEc);
-    if (!sizeEc && sz > kMaxOdtBytes) {
+    if (sizeEc) {
+        return mondoc::unexpected(mondoc::Error::generic(
+            std::string{"cannot stat file: "} + sizeEc.message()));
+    }
+    if (sz > kMaxOdtBytes) {
         return mondoc::unexpected(mondoc::Error::generic("ODT file too large (> 50 MB)"));
     }
 
@@ -182,7 +189,7 @@ OdtDocumentReader::read(const std::filesystem::path& path) {
     std::error_code ec;
     mondoc::domain::Template t;
     t.id_            = mondoc::TemplateId{generateUuid()};
-    t.name_          = path.stem().string();
+    t.name_          = pathToUtf8(path.stem());
     t.source_format_ = "odt";
     t.fields_        = unionFields(std::move(formFields), std::move(placeholderFields));
     t.source_path_   = std::filesystem::absolute(path, ec);

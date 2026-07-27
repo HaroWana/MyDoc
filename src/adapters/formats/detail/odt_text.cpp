@@ -5,7 +5,12 @@
 
 namespace mondoc::adapters::formats::detail {
 
-void appendOdtText(const pugi::xml_node& node, std::string& out) {
+namespace {
+constexpr int kMaxDepth = 256;
+}  // namespace
+
+void appendOdtText(const pugi::xml_node& node, std::string& out, int depth) {
+    if (depth > kMaxDepth) return;
     for (pugi::xml_node child : node.children()) {
         if (child.type() == pugi::node_pcdata || child.type() == pugi::node_cdata) {
             out += child.value();
@@ -23,7 +28,7 @@ void appendOdtText(const pugi::xml_node& node, std::string& out) {
             if (count < 1) count = 1;
             out.append(static_cast<std::size_t>(count), ' ');
         } else {
-            appendOdtText(child, out);
+            appendOdtText(child, out, depth + 1);
         }
     }
 }

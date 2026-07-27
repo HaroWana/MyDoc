@@ -6,11 +6,13 @@
 #include <zip.h>
 
 #include <chrono>
+#include <cstdint>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <ios>
 #include <iterator>
+#include <new>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -19,6 +21,8 @@
 namespace mondoc::adapters::formats {
 
 namespace {
+
+constexpr std::uint64_t kMaxSourceBytes = 50ULL * 1024 * 1024;
 
 std::string isoTimestamp() {
     auto now = std::chrono::system_clock::now();
@@ -106,14 +110,30 @@ std::string buildManifest(const mondoc::domain::Template& tpl,
 
 mondoc::expected<std::vector<char>, mondoc::Error>
 readSourceFile(const std::filesystem::path& path) {
+    std::error_code sizeEc;
+    auto sz = std::filesystem::file_size(path, sizeEc);
+    if (sizeEc) {
+        return mondoc::unexpected(mondoc::Error::generic(
+            std::string{"cannot stat source document: "} + sizeEc.message()));
+    }
+    if (sz > kMaxSourceBytes) {
+        return mondoc::unexpected(mondoc::Error::generic(
+            "source document too large (> 50 MB)"));
+    }
+
     std::ifstream in(path, std::ios::binary);
     if (!in) {
         return mondoc::unexpected(mondoc::Error::generic(
             "cannot open source document"));
     }
-    std::vector<char> buf{std::istreambuf_iterator<char>{in},
-                          std::istreambuf_iterator<char>{}};
-    return buf;
+    try {
+        std::vector<char> buf{std::istreambuf_iterator<char>{in},
+                              std::istreambuf_iterator<char>{}};
+        return buf;
+    } catch (const std::bad_alloc&) {
+        return mondoc::unexpected(mondoc::Error::generic(
+            "source document too large to read into memory"));
+    }
 }
 
 }  // namespace
@@ -127,13 +147,18 @@ MondocBundleWriter::write(const mondoc::domain::Template& tpl,
             "template source_path_ is empty"));
     }
 
+    const std::string sourceFilename =
+        pathToUtf8(tpl.source_path_.filename());
+    if (sourceFilename == "manifest.json") {
+        return mondoc::unexpected(mondoc::Error::invalidArgument(
+            "source file cannot be named manifest.json"));
+    }
+
     auto sourceBytes = readSourceFile(tpl.source_path_);
     if (!sourceBytes) {
         return mondoc::unexpected(sourceBytes.error());
     }
 
-    const std::string sourceFilename =
-        pathToUtf8(tpl.source_path_.filename());
     const std::string manifest = buildManifest(tpl, sourceFilename);
 
     int errCode = 0;
@@ -184,10 +209,11 @@ MondocBundleWriter::write(const mondoc::domain::Template& tpl,
     }
 
     if (zip_close(za) < 0) {
+        std::string msg = zip_strerror(za);
         zip_discard(za);
         std::filesystem::remove(dest, ec);
         return mondoc::unexpected(mondoc::Error::generic(
-            "zip_close failed"));
+            "zip_close failed: " + msg));
     }
     return {};
 }

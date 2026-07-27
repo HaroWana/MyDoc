@@ -35,6 +35,8 @@ PdfDocumentWriter::write(const mondoc::domain::Template& tpl,
         params.AutoSelect = PoDoFo::PdfFontAutoSelectBehavior::Standard14;
         auto* font = document.GetFonts().SearchFont("Helvetica", params);
         if (!font) {
+            std::error_code ec;
+            std::filesystem::remove(dest, ec);
             return mondoc::unexpected(mondoc::Error::generic(
                 "podofo: Helvetica font not found"));
         }
@@ -76,9 +78,13 @@ PdfDocumentWriter::write(const mondoc::domain::Template& tpl,
         document.Save(pathToUtf8(dest));
         return {};
     } catch (const PoDoFo::PdfError& e) {
+        std::error_code ec;
+        std::filesystem::remove(dest, ec);
         return mondoc::unexpected(mondoc::Error::generic(
             std::string{"podofo: "} + e.what()));
     } catch (const std::exception& e) {
+        std::error_code ec;
+        std::filesystem::remove(dest, ec);
         return mondoc::unexpected(mondoc::Error::generic(
             std::string{"podofo: "} + e.what()));
     }

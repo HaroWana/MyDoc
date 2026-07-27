@@ -1,5 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <csignal>
+#include <sys/resource.h>
+
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -163,6 +166,32 @@ TEST_CASE("TextDocumentWriter: substitution never re-scans inserted values",
     auto r = TextDocumentWriter{}.write(tpl, fills, dst.path);
     REQUIRE(r.has_value());
     REQUIRE(readFile(dst.path) == "Name: John [note] Smith Note: SECRET");
+}
+
+TEST_CASE("TextDocumentWriter: removes dest and reports failure when the write cannot be flushed",
+          "[formats.text_writer]") {
+    TempFile src{uniqueTempPath(".txt")};
+    TempFile dst{uniqueTempPath(".txt")};
+    writeFile(src.path, "Hello {{first_name}}!");
+
+    auto tpl = makeTpl(src.path,
+                       {Field{FieldId{"f1"}, "first_name", FieldType::Text}});
+    std::vector<Fill> fills{Fill{FieldId{"f1"}, "Jane", {}}};
+
+    // Force any write beyond the file-size limit to fail with EFBIG instead
+    // of the default action of killing the process with SIGXFSZ.
+    ::signal(SIGXFSZ, SIG_IGN);
+    struct rlimit oldLimit {};
+    ::getrlimit(RLIMIT_FSIZE, &oldLimit);
+    struct rlimit rl {0, oldLimit.rlim_max};
+    ::setrlimit(RLIMIT_FSIZE, &rl);
+
+    auto r = TextDocumentWriter{}.write(tpl, fills, dst.path);
+
+    ::setrlimit(RLIMIT_FSIZE, &oldLimit);
+
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE_FALSE(std::filesystem::exists(dst.path));
 }
 
 TEST_CASE("TextDocumentWriter: .md template substitution byte-matches .txt",

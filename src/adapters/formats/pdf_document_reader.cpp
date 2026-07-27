@@ -5,6 +5,7 @@
 
 #include <podofo/podofo.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -18,6 +19,8 @@ namespace {
 
 using detail::normalize;
 
+constexpr std::uint64_t kMaxPdfBytes = 50ULL * 1024 * 1024;
+
 }  // namespace
 
 mondoc::expected<mondoc::domain::Template, mondoc::Error>
@@ -26,6 +29,17 @@ PdfDocumentReader::read(const std::filesystem::path& path) {
         return mondoc::unexpected(mondoc::Error::invalidArgument(
             "PdfDocumentReader: expected .pdf, got " + path.extension().string()));
     }
+
+    std::error_code sizeEc;
+    auto fileSize = std::filesystem::file_size(path, sizeEc);
+    if (sizeEc) {
+        return mondoc::unexpected(mondoc::Error::generic(
+            std::string{"cannot stat file: "} + sizeEc.message()));
+    }
+    if (fileSize > kMaxPdfBytes) {
+        return mondoc::unexpected(mondoc::Error::generic("file too large"));
+    }
+
     try {
         PoDoFo::PdfMemDocument document;
         document.Load(pathToUtf8(path));
@@ -41,7 +55,7 @@ PdfDocumentReader::read(const std::filesystem::path& path) {
             std::error_code ec;
             mondoc::domain::Template t;
             t.id_            = mondoc::TemplateId{generateUuid()};
-            t.name_          = path.stem().string();
+            t.name_          = pathToUtf8(path.stem());
             t.source_format_ = "pdf";
             t.source_path_   = std::filesystem::absolute(path, ec);
             if (ec) t.source_path_ = path;
@@ -83,7 +97,7 @@ PdfDocumentReader::read(const std::filesystem::path& path) {
         std::error_code ec;
         mondoc::domain::Template t;
         t.id_            = mondoc::TemplateId{generateUuid()};
-        t.name_          = path.stem().string();
+        t.name_          = pathToUtf8(path.stem());
         t.source_format_ = "pdf";
         t.fields_        = std::move(fields);
         t.source_path_   = std::filesystem::absolute(path, ec);

@@ -24,6 +24,7 @@ namespace mondoc::adapters::formats {
 namespace {
 
 constexpr std::uint64_t kMaxDocxBytes = 50ULL * 1024 * 1024;
+constexpr int kMaxXmlDepth = 256;
 
 using detail::normalize;
 
@@ -83,7 +84,9 @@ void applyCheckboxFill(pugi::xml_node checkboxNode, pugi::xml_node content,
 }
 
 void applySdtFills(pugi::xml_node node,
-                   const std::unordered_map<std::string, std::string>& byName) {
+                   const std::unordered_map<std::string, std::string>& byName,
+                   int depth = 0) {
+    if (depth > kMaxXmlDepth) return;
     for (pugi::xml_node child : node.children()) {
         if (std::string_view{child.name()} == "w:sdt") {
             pugi::xml_node props = child.child("w:sdtPr");
@@ -121,7 +124,7 @@ void applySdtFills(pugi::xml_node node,
                 }
             }
         }
-        applySdtFills(child, byName);
+        applySdtFills(child, byName, depth + 1);
     }
 }
 
@@ -142,7 +145,9 @@ bool hasAnyPlaceholder(const std::string& s) {
 }
 
 void applyPlaceholderFills(pugi::xml_node node,
-                           const std::unordered_map<std::string, std::string>& byName) {
+                           const std::unordered_map<std::string, std::string>& byName,
+                           int depth = 0) {
+    if (depth > kMaxXmlDepth) return;
     for (pugi::xml_node child : node.children()) {
         if (std::string_view{child.name()} == "w:p") {
             const std::string original = reconstructParagraphText(child);
@@ -167,7 +172,7 @@ void applyPlaceholderFills(pugi::xml_node node,
                 }
             }
         }
-        applyPlaceholderFills(child, byName);
+        applyPlaceholderFills(child, byName, depth + 1);
     }
 }
 
@@ -246,9 +251,10 @@ DocxDocumentWriter::write(const mondoc::domain::Template& tpl,
     }
 
     if (zip_close(zf) < 0) {
+        std::string msg = zip_strerror(zf);
         zip_discard(zf);
         std::filesystem::remove(dest, ec);
-        return mondoc::unexpected(mondoc::Error::generic("zip_close failed"));
+        return mondoc::unexpected(mondoc::Error::generic("zip_close failed: " + msg));
     }
     return {};
 }

@@ -66,7 +66,7 @@ PlainTextDocumentReader::read(const std::filesystem::path& path) {
 
     mondoc::domain::Template t;
     t.id_            = mondoc::TemplateId{generateUuid()};
-    t.name_          = path.stem().string();
+    t.name_          = pathToUtf8(path.stem());
     t.source_format_ = ext.substr(1);
     t.fields_        = std::move(fields);
     t.source_path_   = std::filesystem::absolute(path, ec);

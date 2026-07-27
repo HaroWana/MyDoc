@@ -26,6 +26,7 @@ namespace mondoc::adapters::formats {
 namespace {
 
 constexpr std::uint64_t kMaxOdtBytes = 50ULL * 1024 * 1024;
+constexpr int kMaxXmlDepth = 256;
 
 using detail::normalize;
 
@@ -73,12 +74,13 @@ void applyFormControlFills(pugi::xml_document& doc,
            .child("office:text")
            .child("office:forms");
 
-    std::function<void(pugi::xml_node)> processFormNode;
-    processFormNode = [&](pugi::xml_node node) {
+    std::function<void(pugi::xml_node, int)> processFormNode;
+    processFormNode = [&](pugi::xml_node node, int depth) {
+        if (depth > kMaxXmlDepth) return;
         for (pugi::xml_node child : node.children()) {
             std::string_view n{child.name()};
             if (n == "form:form") {
-                processFormNode(child);
+                processFormNode(child, depth + 1);
                 continue;
             }
             if (n != "form:text"     && n != "form:textarea" &&
@@ -113,14 +115,15 @@ void applyFormControlFills(pugi::xml_document& doc,
         }
     };
     for (pugi::xml_node formNode : formsNode.children("form:form")) {
-        processFormNode(formNode);
+        processFormNode(formNode, 0);
     }
 }
 
 void applyPlaceholderFills(pugi::xml_document& doc,
                            const std::unordered_map<std::string, std::string>& byName) {
-    std::function<void(pugi::xml_node)> traverseText;
-    traverseText = [&](pugi::xml_node node) {
+    std::function<void(pugi::xml_node, int)> traverseText;
+    traverseText = [&](pugi::xml_node node, int depth) {
+        if (depth > kMaxXmlDepth) return;
         for (pugi::xml_node child : node.children()) {
             if (std::string_view{child.name()} == "text:p") {
                 std::string original;
@@ -134,10 +137,10 @@ void applyPlaceholderFills(pugi::xml_document& doc,
                 }
                 continue;
             }
-            traverseText(child);
+            traverseText(child, depth + 1);
         }
     };
-    traverseText(doc);
+    traverseText(doc, 0);
 }
 
 }  // namespace
@@ -146,6 +149,11 @@ mondoc::expected<void, mondoc::Error>
 OdtDocumentWriter::write(const mondoc::domain::Template& tpl,
                          const std::vector<mondoc::domain::Fill>& fills,
                          const std::filesystem::path& dest) {
+    if (tpl.source_path_.empty()) {
+        return mondoc::unexpected(mondoc::Error::invalidArgument(
+            "template source_path_ is empty"));
+    }
+
     std::error_code cpEc;
     std::filesystem::copy_file(tpl.source_path_, dest,
                                std::filesystem::copy_options::overwrite_existing, cpEc);
@@ -210,9 +218,10 @@ OdtDocumentWriter::write(const mondoc::domain::Template& tpl,
         return mondoc::unexpected(mondoc::Error::generic("zip_file_replace failed"));
     }
     if (zip_close(zf) < 0) {
+        std::string msg = zip_strerror(zf);
         zip_discard(zf);
         std::filesystem::remove(dest, cpEc);
-        return mondoc::unexpected(mondoc::Error::generic("zip_close failed"));
+        return mondoc::unexpected(mondoc::Error::generic("zip_close failed: " + msg));
     }
     return {};
 }

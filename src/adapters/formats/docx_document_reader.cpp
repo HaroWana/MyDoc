@@ -21,6 +21,7 @@ namespace mondoc::adapters::formats {
 namespace {
 
 constexpr std::uint64_t kMaxDocxBytes = 50ULL * 1024 * 1024;  // 50 MB DoS guard
+constexpr int kMaxXmlDepth = 256;
 
 using detail::normalize;
 
@@ -41,7 +42,9 @@ readDocumentXml(zip_t* zf) {
 
 void extractSdtFields(const pugi::xml_node& root,
                       std::vector<mondoc::domain::Field>& out,
-                      std::unordered_set<std::string>& seen) {
+                      std::unordered_set<std::string>& seen,
+                      int depth = 0) {
+    if (depth > kMaxXmlDepth) return;
     for (pugi::xml_node node : root.children()) {
         if (std::string_view{node.name()} == "w:sdt") {
             pugi::xml_node props = node.child("w:sdtPr");
@@ -65,7 +68,7 @@ void extractSdtFields(const pugi::xml_node& root,
                 }
             }
         }
-        extractSdtFields(node, out, seen);
+        extractSdtFields(node, out, seen, depth + 1);
     }
 }
 
@@ -94,12 +97,14 @@ void scanPlaceholders(const std::string& text,
 
 void extractPlaceholderFields(const pugi::xml_node& root,
                               std::vector<mondoc::domain::Field>& out,
-                              std::unordered_set<std::string>& seen) {
+                              std::unordered_set<std::string>& seen,
+                              int depth = 0) {
+    if (depth > kMaxXmlDepth) return;
     for (pugi::xml_node node : root.children()) {
         if (std::string_view{node.name()} == "w:p") {
             scanPlaceholders(reconstructParagraphText(node), out, seen);
         }
-        extractPlaceholderFields(node, out, seen);
+        extractPlaceholderFields(node, out, seen, depth + 1);
     }
 }
 
@@ -175,7 +180,7 @@ DocxDocumentReader::read(const std::filesystem::path& path) {
 
     mondoc::domain::Template t;
     t.id_            = mondoc::TemplateId{generateUuid()};
-    t.name_          = path.stem().string();
+    t.name_          = pathToUtf8(path.stem());
     t.source_format_ = "docx";
     t.fields_        = unionFields(std::move(sdtFields), std::move(placeholderFields));
     t.source_path_   = std::filesystem::absolute(path, ec);

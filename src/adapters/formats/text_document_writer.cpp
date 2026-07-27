@@ -74,7 +74,10 @@ TextDocumentWriter::write(const mondoc::domain::Template& tpl,
             "failed to open dest for writing"));
     }
     of << content;
-    if (!of) {
+    of.close();
+    if (of.fail()) {
+        std::error_code removeEc;
+        std::filesystem::remove(dest, removeEc);
         return mondoc::unexpected(mondoc::Error::generic("write failed"));
     }
     return {};

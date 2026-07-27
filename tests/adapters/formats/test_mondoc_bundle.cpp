@@ -141,6 +141,48 @@ TEST_CASE("MondocBundle: missing mondoc_version rejected [phase05][adapters.form
     REQUIRE(result.error().message().find("mondoc_version") != std::string::npos);
 }
 
+TEST_CASE("MondocBundle: rejects source file larger than 50MB [phase05][adapters.formats.mondoc]") {
+    TempFile src{std::filesystem::temp_directory_path() / "mondoc_test_bundle_huge.docx"};
+    {
+        std::ofstream f(src.path, std::ios::binary);
+        f << "fake source content";
+    }
+    std::error_code resizeEc;
+    std::filesystem::resize_file(src.path, 51ULL * 1024 * 1024, resizeEc);
+    REQUIRE_FALSE(resizeEc);
+
+    Template tpl;
+    tpl.id_ = mondoc::TemplateId{"huge-tpl"};
+    tpl.name_ = "Huge Template";
+    tpl.source_format_ = "docx";
+    tpl.source_path_ = src.path;
+
+    TempFile out{tempBundlePath("huge")};
+    MondocBundleWriter writer;
+    auto result = writer.write(tpl, out.path);
+    REQUIRE_FALSE(result.has_value());
+}
+
+TEST_CASE("MondocBundle: rejects source file named manifest.json [phase05][adapters.formats.mondoc]") {
+    TempFile src{std::filesystem::temp_directory_path() / "manifest.json"};
+    {
+        std::ofstream f(src.path, std::ios::binary);
+        f << "fake source content";
+    }
+
+    Template tpl;
+    tpl.id_ = mondoc::TemplateId{"manifest-tpl"};
+    tpl.name_ = "Manifest Named Template";
+    tpl.source_format_ = "docx";
+    tpl.source_path_ = src.path;
+
+    TempFile out{tempBundlePath("manifest_named")};
+    MondocBundleWriter writer;
+    auto result = writer.write(tpl, out.path);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == mondoc::Error::Kind::InvalidArgument);
+}
+
 TEST_CASE("MondocBundle: PdfLocation round-trips through bundle [phase05][adapters.formats.mondoc]") {
     TempSourceFile src{"mondoc_loc_source.pdf"};
     Template tpl;

@@ -46,6 +46,23 @@ TEST_CASE("[TMPL-03] PdfDocumentReader: returns error for corrupt file",
     REQUIRE_FALSE(result.has_value());
 }
 
+TEST_CASE("PdfDocumentReader: rejects file larger than 50MB",
+          "[formats.pdf_reader]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    {
+        std::ofstream out(tmp.path, std::ios::binary);
+        out << "%PDF-1.4\n";
+    }
+    std::error_code resizeEc;
+    std::filesystem::resize_file(tmp.path, 51ULL * 1024 * 1024, resizeEc);
+    REQUIRE_FALSE(resizeEc);
+
+    PdfDocumentReader reader;
+    auto result = reader.read(tmp.path);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().message().find("too large") != std::string::npos);
+}
+
 TEST_CASE("[TMPL-06] PdfDocumentReader: extracts AcroForm TextBox field",
           "[formats.pdf_reader]") {
     SKIP("requires real .pdf fixture with AcroForm fields");
