@@ -199,6 +199,60 @@ TEST_CASE("SqliteFillSessionRepository: upsertValue first inserts, second update
     REQUIRE(value.getColumn(0).getString() == "v2");
 }
 
+TEST_CASE("SqliteFillSessionRepository: upsertValueIfNotManual writes when no row exists yet",
+          "[storage.fill_session][dsa-4]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+    REQUIRE(repo.save(makeSession("s1")).has_value());
+
+    auto written = repo.upsertValueIfNotManual(FillSessionId{"s1"}, FieldId{"f1"}, "ai value");
+    REQUIRE(written.has_value());
+    REQUIRE(*written == true);
+
+    auto session = repo.findById(FillSessionId{"s1"});
+    REQUIRE(session.has_value());
+    REQUIRE(session->fills_.size() == 1);
+    REQUIRE(session->fills_[0].current_value_ == "ai value");
+}
+
+TEST_CASE("SqliteFillSessionRepository: upsertValueIfNotManual overwrites a non-manual row",
+          "[storage.fill_session][dsa-4]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+    REQUIRE(repo.save(makeSession("s1")).has_value());
+    REQUIRE(repo.upsertValue(FillSessionId{"s1"}, FieldId{"f1"}, "first ai guess").has_value());
+    REQUIRE(repo.upsertConfidence(FillSessionId{"s1"}, FieldId{"f1"}, Confidence::High).has_value());
+
+    auto written = repo.upsertValueIfNotManual(FillSessionId{"s1"}, FieldId{"f1"}, "second ai guess");
+    REQUIRE(written.has_value());
+    REQUIRE(*written == true);
+
+    auto session = repo.findById(FillSessionId{"s1"});
+    REQUIRE(session.has_value());
+    REQUIRE(session->fills_[0].current_value_ == "second ai guess");
+}
+
+TEST_CASE("SqliteFillSessionRepository: upsertValueIfNotManual skips a Manual, non-empty row atomically",
+          "[storage.fill_session][dsa-4]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+    REQUIRE(repo.save(makeSession("s1")).has_value());
+    REQUIRE(repo.upsertValue(FillSessionId{"s1"}, FieldId{"f1"}, "USER TYPED").has_value());
+    REQUIRE(repo.upsertConfidence(FillSessionId{"s1"}, FieldId{"f1"}, Confidence::Manual).has_value());
+
+    auto written = repo.upsertValueIfNotManual(FillSessionId{"s1"}, FieldId{"f1"}, "ai overwrite");
+    REQUIRE(written.has_value());
+    REQUIRE(*written == false);
+
+    auto session = repo.findById(FillSessionId{"s1"});
+    REQUIRE(session.has_value());
+    REQUIRE(session->fills_[0].current_value_ == "USER TYPED");
+    REQUIRE(session->fills_[0].confidence_ == Confidence::Manual);
+}
+
 TEST_CASE("SqliteFillSessionRepository: findById returns notFound for unknown id",
           "[storage.fill_session]") {
     auto conn = openMigratedDb();

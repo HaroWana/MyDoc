@@ -31,6 +31,14 @@ public:
                     const mondoc::FieldId& fieldId,
                     const std::string& value) = 0;
 
+    // Atomically writes `value` unless the field's CURRENT stored state is
+    // Manual with a non-empty value, in which case the write is skipped.
+    // Returns true if the write happened, false if it was protected.
+    virtual mondoc::expected<bool, mondoc::Error>
+        upsertValueIfNotManual(const mondoc::FillSessionId& sessionId,
+                               const mondoc::FieldId& fieldId,
+                               const std::string& value) = 0;
+
     virtual mondoc::expected<void, mondoc::Error>
         upsertConfidence(const mondoc::FillSessionId& sessionId,
                          const mondoc::FieldId& fieldId,

@@ -69,7 +69,12 @@ mondoc::expected<void, mondoc::Error>
 FillSessionService::setFieldValue(const mondoc::FillSessionId& sessionId,
                                    const mondoc::FieldId& fieldId,
                                    const std::string& value) {
-    return sessionRepo_.upsertValue(sessionId, fieldId, value);
+    auto setVal = sessionRepo_.upsertValue(sessionId, fieldId, value);
+    if (!setVal) return mondoc::unexpected(setVal.error());
+    // A direct user edit always wins going forward: persist Manual so a
+    // field the AI filled earlier stops being eligible for AI overwrite.
+    return sessionRepo_.upsertConfidence(
+        sessionId, fieldId, mondoc::domain::Confidence::Manual);
 }
 
 mondoc::expected<std::vector<mondoc::domain::Fill>, mondoc::Error>
@@ -99,28 +104,27 @@ FillSessionService::aiFill(const mondoc::FillSessionId& sessionId,
     std::vector<mondoc::domain::Fill> out;
     out.reserve(pipeResult->size());
     for (const auto& aiFill : *pipeResult) {
-        // Re-fetch the field's current state right before the upsert: the LLM
-        // call above can take a long time, and the user may have typed a
-        // manual value into this field while it was running. The pre-call
-        // snapshot (sessionRes) would not see that edit.
-        auto freshSession = sessionRepo_.findById(sessionId);
-        if (!freshSession) return mondoc::unexpected(freshSession.error());
-        const mondoc::domain::Fill* existing = nullptr;
-        for (const auto& f : freshSession->fills_) {
-            if (f.field_id_ == aiFill.field_id_) {
-                existing = &f;
-                break;
+        // The LLM call above can take a long time, and the user may type a
+        // manual value into this field while it's running. Protection against
+        // that race must be atomic in the repo (check-then-act here would
+        // still race), so the write and the Manual/non-empty guard happen in
+        // a single SQL statement.
+        auto written = sessionRepo_.upsertValueIfNotManual(
+            sessionId, aiFill.field_id_, aiFill.current_value_);
+        if (!written) return mondoc::unexpected(written.error());
+
+        if (!*written) {
+            auto freshSession = sessionRepo_.findById(sessionId);
+            if (!freshSession) return mondoc::unexpected(freshSession.error());
+            for (const auto& f : freshSession->fills_) {
+                if (f.field_id_ == aiFill.field_id_) {
+                    out.push_back(f);
+                    break;
+                }
             }
-        }
-        if (existing &&
-            existing->confidence_ == mondoc::domain::Confidence::Manual &&
-            !existing->current_value_.empty()) {
-            out.push_back(*existing);
             continue;
         }
-        auto setVal = sessionRepo_.upsertValue(
-            sessionId, aiFill.field_id_, aiFill.current_value_);
-        if (!setVal) return mondoc::unexpected(setVal.error());
+
         auto setConf = sessionRepo_.upsertConfidence(
             sessionId, aiFill.field_id_, aiFill.confidence_);
         if (!setConf) return mondoc::unexpected(setConf.error());
@@ -162,21 +166,11 @@ FillSessionService::refineField(
     std::vector<mondoc::domain::Fill> out;
     out.reserve(pipeResult->size());
     for (const auto& upd : *pipeResult) {
-        const mondoc::domain::Fill* existing = nullptr;
-        for (const auto& f : sessionRes->fills_) {
-            if (f.field_id_ == upd.field_id_) {
-                existing = &f;
-                break;
-            }
-        }
-        if (existing &&
-            existing->confidence_ == mondoc::domain::Confidence::Manual &&
-            !existing->current_value_.empty()) {
-            continue;
-        }
-        auto setVal = sessionRepo_.upsertValue(
+        auto written = sessionRepo_.upsertValueIfNotManual(
             sessionId, upd.field_id_, upd.current_value_);
-        if (!setVal) return mondoc::unexpected(setVal.error());
+        if (!written) return mondoc::unexpected(written.error());
+        if (!*written) continue;
+
         auto setConf = sessionRepo_.upsertConfidence(
             sessionId, upd.field_id_, upd.confidence_);
         if (!setConf) return mondoc::unexpected(setConf.error());

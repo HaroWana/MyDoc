@@ -133,8 +133,56 @@ public:
         return {};
     }
 
+    // Mirrors the real SqliteFillSessionRepository::upsertValueIfNotManual:
+    // a single atomic check-and-write against whatever the field's CURRENT
+    // stored state is (not a stale snapshot) — write skipped if that state
+    // is Manual with a non-empty value.
+    mondoc::expected<bool, mondoc::Error>
+    upsertValueIfNotManual(const FillSessionId& sessionId,
+                           const FieldId& fieldId,
+                           const std::string& value) override {
+        auto it = store_.find(sessionId.value());
+        if (it == store_.end()) {
+            return mondoc::unexpected(mondoc::Error::notFound("missing session"));
+        }
+        for (auto& f : it->second.fills_) {
+            if (f.field_id_.value() == fieldId.value()) {
+                if (f.confidence_ == Confidence::Manual && !f.current_value_.empty()) {
+                    return false;
+                }
+                f.current_value_ = value;
+                upsertCalls_.push_back({sessionId.value(), fieldId.value(), value});
+                return true;
+            }
+        }
+        Fill f;
+        f.field_id_      = fieldId;
+        f.current_value_ = value;
+        it->second.fills_.push_back(std::move(f));
+        upsertCalls_.push_back({sessionId.value(), fieldId.value(), value});
+        return true;
+    }
+
+    // A fresh row's confidence defaults to 'manual' at the schema level
+    // (see migrations.cpp kV4Sql); mirror that here via Fill::confidence_'s
+    // own default rather than hardcoding it twice.
     mondoc::expected<void, mondoc::Error>
-    upsertConfidence(const FillSessionId&, const FieldId&, Confidence) override {
+    upsertConfidence(const FillSessionId& sessionId, const FieldId& fieldId,
+                      Confidence confidence) override {
+        auto it = store_.find(sessionId.value());
+        if (it == store_.end()) {
+            return mondoc::unexpected(mondoc::Error::notFound("missing session"));
+        }
+        for (auto& f : it->second.fills_) {
+            if (f.field_id_.value() == fieldId.value()) {
+                f.confidence_ = confidence;
+                return {};
+            }
+        }
+        Fill f;
+        f.field_id_   = fieldId;
+        f.confidence_ = confidence;
+        it->second.fills_.push_back(std::move(f));
         return {};
     }
 
@@ -653,6 +701,51 @@ TEST_CASE("FillSessionService::aiFill: does not overwrite a manual value entered
         return std::string{};
     };
     REQUIRE(valueOf("f1") == "USER TYPED");
+    // The race must protect only the field the user touched — the AI values
+    // for every other field still land normally.
+    REQUIRE(valueOf("f2") == "1985-03-12");
+    REQUIRE(valueOf("f3") == "95");
+}
+
+TEST_CASE("FillSessionService::aiFill: a value AI-filled in a prior run stays protected "
+          "once the user edits it (DSA-4)",
+          "[services.fill_session][adapters.ai][dsa-4]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing);
+
+    FakeLlmClient fake;
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    // Run 1: AI fills f1 with "John" at High confidence.
+    fake.enqueueOk(canonicalPass1());
+    fake.enqueueOk(canonicalPass2());
+    std::atomic<bool> cancelled{false};
+    auto r1 = svc.aiFill(FillSessionId{"s1"}, {}, "", cancelled);
+    REQUIRE(r1.has_value());
+    REQUIRE(fillRepo.store_["s1"].fills_.size() == 3);
+
+    // User edits f1 — setFieldValue must persist Manual confidence (Finding 1),
+    // not just the value, or the field remains eligible for AI overwrite.
+    auto edit = svc.setFieldValue(FillSessionId{"s1"}, FieldId{"f1"}, "Jonathan");
+    REQUIRE(edit.has_value());
+
+    // Run 2: AI proposes "John" again for f1; the user's edit must survive.
+    fake.enqueueOk(canonicalPass1());
+    fake.enqueueOk(canonicalPass2());
+    auto r2 = svc.aiFill(FillSessionId{"s1"}, {}, "", cancelled);
+    REQUIRE(r2.has_value());
+
+    const auto& stored = fillRepo.store_["s1"].fills_;
+    auto valueOf = [&](const std::string& fid) {
+        for (const auto& f : stored)
+            if (f.field_id_.value() == fid) return f.current_value_;
+        return std::string{};
+    };
+    REQUIRE(valueOf("f1") == "Jonathan");
 }
 
 TEST_CASE("FillSessionService::aiFill: LlmError::Cancelled classifies as Cancelled",

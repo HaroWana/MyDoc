@@ -29,6 +29,11 @@ public:
                     const mondoc::FieldId& fieldId,
                     const std::string& value) override;
 
+    mondoc::expected<bool, mondoc::Error>
+        upsertValueIfNotManual(const mondoc::FillSessionId& sessionId,
+                               const mondoc::FieldId& fieldId,
+                               const std::string& value) override;
+
     mondoc::expected<void, mondoc::Error>
         upsertConfidence(const mondoc::FillSessionId& sessionId,
                          const mondoc::FieldId& fieldId,

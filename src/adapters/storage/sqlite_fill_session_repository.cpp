@@ -321,6 +321,50 @@ SqliteFillSessionRepository::upsertValue(const mondoc::FillSessionId& sessionId,
     }
 }
 
+mondoc::expected<bool, mondoc::Error>
+SqliteFillSessionRepository::upsertValueIfNotManual(const mondoc::FillSessionId& sessionId,
+                                                     const mondoc::FieldId& fieldId,
+                                                     const std::string& value) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
+    auto& db = conn_.raw();
+    try {
+        const auto now = static_cast<int64_t>(unixNowSeconds());
+
+        SQLite::Transaction tx(db);
+
+        // Single atomic statement: the WHERE clause on the DO UPDATE branch
+        // reads the row's *current* confidence/value (the ON CONFLICT target),
+        // so a user's Manual, non-empty edit protects itself even if it lands
+        // in the microsecond window between an AI read and this write.
+        SQLite::Statement upsert(db,
+            "INSERT INTO fill_values(session_id, field_id, value, updated_at)"
+            " VALUES(?,?,?,?)"
+            " ON CONFLICT(session_id, field_id) DO UPDATE SET"
+            "  value=excluded.value,"
+            "  updated_at=excluded.updated_at"
+            " WHERE NOT (confidence = 'manual' AND value <> '')");
+        upsert.bind(1, sessionId.value());
+        upsert.bind(2, fieldId.value());
+        upsert.bind(3, value);
+        upsert.bind(4, now);
+        upsert.exec();
+
+        const bool written = db.getChanges() > 0;
+        if (written) {
+            SQLite::Statement bump(db,
+                "UPDATE fill_sessions SET updated_at = ? WHERE id = ?");
+            bump.bind(1, now);
+            bump.bind(2, sessionId.value());
+            bump.exec();
+        }
+
+        tx.commit();
+        return written;
+    } catch (const SQLite::Exception& e) {
+        return mondoc::unexpected(mondoc::Error::generic(e.what()));
+    }
+}
+
 mondoc::expected<void, mondoc::Error>
 SqliteFillSessionRepository::upsertConfidence(const mondoc::FillSessionId& sessionId,
                                                const mondoc::FieldId& fieldId,
