@@ -12,8 +12,10 @@ add_library(mondoc_adapters_formats STATIC
     odt_document_writer.cpp
     mondoc_bundle_writer.cpp
     mondoc_bundle_reader.cpp
+    plain_text_extractor.cpp
     detail/zip_util.cpp
     detail/placeholders.cpp
+    detail/odt_text.cpp
 )
 
 target_include_directories(mondoc_adapters_formats PUBLIC

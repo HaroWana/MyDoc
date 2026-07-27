@@ -470,6 +470,46 @@ TEST_CASE("FillSessionService: readSourceText returns body for .md",
     REQUIRE(*r == "# Heading\nbody");
 }
 
+TEST_CASE("[TST-6] FillSessionService: readSourceText returns body for .docx",
+          "[services.fill_session]") {
+    TempFile src{uniqueTempPath(".docx")};
+    {
+        constexpr std::string_view documentXml = R"XML(<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body><w:p><w:r><w:t>docx body text</w:t></w:r></w:p></w:body>
+</w:document>)XML";
+        int err = 0;
+        zip_t* zf = zip_open(src.path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
+        REQUIRE(zf != nullptr);
+        auto* buf = zip_source_buffer(zf, documentXml.data(), documentXml.size(), 0);
+        REQUIRE(buf != nullptr);
+        REQUIRE(zip_file_add(zf, "word/document.xml", buf, ZIP_FL_OVERWRITE) >= 0);
+        REQUIRE(zip_close(zf) == 0);
+    }
+
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    FillSessionService svc{fillRepo, tplRepo};
+    auto r = svc.readSourceText(src.path);
+
+    REQUIRE(r.has_value());
+    REQUIRE(*r == "docx body text");
+}
+
+TEST_CASE("[TST-6] FillSessionService: readSourceText returns error for corrupt .docx zip",
+          "[services.fill_session]") {
+    TempFile src{uniqueTempPath(".docx")};
+    writeFile(src.path, "PK\x03\x04 but not really a zip");
+
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    FillSessionService svc{fillRepo, tplRepo};
+    auto r = svc.readSourceText(src.path);
+
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().kind() != mondoc::Error::Kind::InvalidArgument);
+}
+
 TEST_CASE("FillSessionService: readSourceText returns generic error (not invalidArgument) for invalid .pdf path",
           "[services.fill_session]") {
     FakeFillRepo fillRepo;

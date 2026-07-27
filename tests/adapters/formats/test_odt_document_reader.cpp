@@ -103,6 +103,15 @@ constexpr std::string_view kDedupXml = R"XML(<?xml version="1.0"?>
   </office:text></office:body>
 </office:document-content>)XML";
 
+constexpr std::string_view kPlaceholderAfterSpanXml = R"XML(<?xml version="1.0"?>
+<office:document-content
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:text>
+    <text:p>Hello <text:span>styled</text:span> {{after_span}}</text:p>
+  </office:text></office:body>
+</office:document-content>)XML";
+
 }  // namespace
 
 TEST_CASE("[TMPL-02] OdtDocumentReader: extracts form:text field",
@@ -128,6 +137,20 @@ TEST_CASE("[TMPL-02] OdtDocumentReader: extracts {{placeholder}} field",
     auto& fields = result->fields_;
     auto it = std::find_if(fields.begin(), fields.end(),
         [](const auto& f){ return f.name_ == "first_name"; });
+    REQUIRE(it != fields.end());
+    REQUIRE(it->origin_ == mondoc::domain::FieldOrigin::Placeholder);
+}
+
+TEST_CASE("[TMPL-02] OdtDocumentReader: detects placeholder after an inline span",
+          "[formats.odt_reader]") {
+    TempFile tmp{uniqueTempOdtPath()};
+    writeMinimalOdt(tmp.path, kPlaceholderAfterSpanXml);
+    OdtDocumentReader reader;
+    auto result = reader.read(tmp.path);
+    REQUIRE(result.has_value());
+    auto& fields = result->fields_;
+    auto it = std::find_if(fields.begin(), fields.end(),
+        [](const auto& f){ return f.name_ == "after_span"; });
     REQUIRE(it != fields.end());
     REQUIRE(it->origin_ == mondoc::domain::FieldOrigin::Placeholder);
 }

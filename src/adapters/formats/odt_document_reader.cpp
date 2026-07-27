@@ -1,5 +1,6 @@
 #include "odt_document_reader.hpp"
 
+#include "detail/odt_text.hpp"
 #include "detail/placeholders.hpp"
 #include "detail/zip_util.hpp"
 #include "mondoc/util.hpp"
@@ -94,10 +95,8 @@ void scanPlaceholders(const std::string& text,
 
 void collectTextParagraphs(const pugi::xml_node& node, std::string& out) {
     for (pugi::xml_node child : node.children()) {
-        std::string_view n{child.name()};
-        if (n == "text:p" || n == "text:span") {
-            out += child.child_value();
-            collectTextParagraphs(child, out);
+        if (std::string_view{child.name()} == "text:p") {
+            detail::appendOdtText(child, out);
             out += ' ';
         } else {
             collectTextParagraphs(child, out);

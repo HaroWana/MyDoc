@@ -54,3 +54,8 @@ add_executable(tests_adapters_formats_zip_util test_zip_util.cpp)
 target_link_libraries(tests_adapters_formats_zip_util
     PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
 add_test(NAME formats.zip_util COMMAND tests_adapters_formats_zip_util)
+
+add_executable(tests_adapters_formats_plain_text_extractor test_plain_text_extractor.cpp)
+target_link_libraries(tests_adapters_formats_plain_text_extractor
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.plain_text_extractor COMMAND tests_adapters_formats_plain_text_extractor)
