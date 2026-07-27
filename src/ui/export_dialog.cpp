@@ -10,6 +10,8 @@
 #include <QString>
 #include <QVBoxLayout>
 
+#include "ui_style.hpp"
+
 namespace mondoc::ui {
 
 namespace {
@@ -41,7 +43,7 @@ ExportDialog::ExportDialog(QWidget* parent)
     setModal(true);
 
     for (const auto& f : kFormats) {
-        formatCombo_->addItem(QString::fromUtf8(f.label));
+        formatCombo_->addItem(tr(f.label));
     }
     destEdit_->setReadOnly(true);
     destEdit_->setAccessibleName(tr("Export destination"));
@@ -61,9 +63,7 @@ ExportDialog::ExportDialog(QWidget* parent)
 
     if (auto* okBtn = buttons_->button(QDialogButtonBox::Ok)) {
         okBtn->setText(tr("Export"));
-        okBtn->setStyleSheet(
-            QStringLiteral("QPushButton { background-color: #2563EB; color: white; "
-                           "padding: 6px 12px; }"));
+        okBtn->setStyleSheet(accentButtonStyle());
     }
     if (auto* cancelBtn = buttons_->button(QDialogButtonBox::Cancel)) {
         cancelBtn->setText(tr("Cancel Export"));
@@ -92,7 +92,7 @@ std::filesystem::path ExportDialog::selectedPath() const {
 void ExportDialog::onBrowse() {
     const auto& f = kFormats[formatCombo_->currentIndex()];
     const QString chosen = QFileDialog::getSaveFileName(
-        this, tr("Export Document"), QString{}, QString::fromUtf8(f.filter));
+        this, tr("Export Document"), QString{}, tr(f.filter));
     if (!chosen.isEmpty()) {
         destEdit_->setText(chosen);
     }

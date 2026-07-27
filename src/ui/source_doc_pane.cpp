@@ -69,6 +69,14 @@ SourceDocPane::SourceDocPane(QWidget* parent)
 
 void SourceDocPane::setSourceTexts(
     const std::vector<std::pair<QString, QString>>& titledBodies) {
+    viewByDocId_.clear();
+    singleView_->clear();
+    while (tabs_->count() > 0) {
+        QWidget* w = tabs_->widget(0);
+        tabs_->removeTab(0);
+        delete w;
+    }
+
     if (titledBodies.empty()) {
         stack_->setCurrentIndex(kEmptyIndex);
         return;
@@ -77,11 +85,6 @@ void SourceDocPane::setSourceTexts(
         singleView_->setPlainText(titledBodies[0].second);
         stack_->setCurrentIndex(kSingleIndex);
         return;
-    }
-    while (tabs_->count() > 0) {
-        QWidget* w = tabs_->widget(0);
-        tabs_->removeTab(0);
-        delete w;
     }
     for (const auto& [title, body] : titledBodies) {
         auto* view = new QPlainTextEdit(tabs_);
@@ -102,7 +105,6 @@ void SourceDocPane::setSourceTexts(
     }
     setSourceTexts(legacy);
 
-    viewByDocId_.clear();
     if (sources.size() == 1) {
         viewByDocId_[std::get<0>(sources[0]).value()] = singleView_;
     } else {

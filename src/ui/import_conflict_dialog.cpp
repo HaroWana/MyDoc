@@ -4,6 +4,8 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "ui_style.hpp"
+
 namespace mondoc::ui {
 
 ImportConflictDialog::ImportConflictDialog(const QString& conflictingName, QWidget* parent)
@@ -22,15 +24,12 @@ ImportConflictDialog::ImportConflictDialog(const QString& conflictingName, QWidg
     warningLabel->setWordWrap(true);
     warningLabel->setStyleSheet(QStringLiteral("color: #DC2626;"));
 
-    const QString accentStyle =
-        QStringLiteral("QPushButton { background-color: #2563EB; color: white; padding: 8px 16px; }");
-
     auto* overwriteBtn = new QPushButton(tr("Overwrite"), this);
-    overwriteBtn->setStyleSheet(accentStyle);
+    overwriteBtn->setStyleSheet(accentButtonStyle());
     overwriteBtn->setAccessibleName(tr("Overwrite existing template"));
 
     auto* copyBtn = new QPushButton(tr("Import as Copy"), this);
-    copyBtn->setStyleSheet(accentStyle);
+    copyBtn->setStyleSheet(accentButtonStyle());
     copyBtn->setAccessibleName(tr("Import as a copy with a new name"));
 
     auto* cancelBtn = new QPushButton(tr("Cancel Import"), this);

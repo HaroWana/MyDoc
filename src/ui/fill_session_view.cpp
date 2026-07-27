@@ -16,13 +16,16 @@
 #include <QThread>
 #include <QUndoStack>
 #include <QVBoxLayout>
+#include <QtGlobal>
 
 #include "ai_fill_worker.hpp"
 #include "ai_refine_worker.hpp"
 #include "chat_pane.hpp"
 #include "export_dialog.hpp"
 #include "field_form_pane.hpp"
+#include "llm_error_text.hpp"
 #include "source_doc_pane.hpp"
+#include "ui_style.hpp"
 
 namespace mondoc::ui {
 
@@ -93,22 +96,18 @@ void FillSessionView::buildToolbar(QWidget* host) {
     fillWithAiBtn_ = new QPushButton(tr("Fill with AI"), host);
     fillWithAiBtn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+F")));
     fillWithAiBtn_->setAccessibleName(tr("Fill with AI"));
-    fillWithAiBtn_->setStyleSheet(QStringLiteral(
-        "QPushButton { background-color: #2563EB; color: white; padding: 6px 12px; }"));
+    fillWithAiBtn_->setStyleSheet(accentButtonStyle());
 
     saveDraftBtn_ = new QPushButton(tr("Save Draft"), host);
     saveDraftBtn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
     saveDraftBtn_->setAccessibleName(tr("Save Draft"));
-    saveDraftBtn_->setStyleSheet(
-        QStringLiteral("QPushButton { background-color: #2563EB; color: white; "
-                       "padding: 6px 12px; }"));
+    saveDraftBtn_->setToolTip(tr("Changes save automatically as you edit."));
+    saveDraftBtn_->setStyleSheet(accentButtonStyle());
 
     exportBtn_ = new QPushButton(tr("Export\xe2\x80\xa6"), host);
     exportBtn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
     exportBtn_->setAccessibleName(tr("Export Document"));
-    exportBtn_->setStyleSheet(
-        QStringLiteral("QPushButton { background-color: #2563EB; color: white; "
-                       "padding: 6px 12px; }"));
+    exportBtn_->setStyleSheet(accentButtonStyle());
 
     layout->addWidget(backBtn_);
     layout->addWidget(templateNameLabel_, 1);
@@ -372,29 +371,24 @@ FillSessionView::currentSources() const {
     return out;
 }
 
-void FillSessionView::showAiErrorDialog(
-        mondoc::services::AiFailureKind kind, const QString& /*message*/) {
-    using K = mondoc::services::AiFailureKind;
-    QString title, body;
+void FillSessionView::showAiErrorDialog(const mondoc::Error& error) {
+    if (error.kind() == mondoc::Error::Kind::Cancelled) return;
+
+    QString title;
     QMessageBox::Icon icon = QMessageBox::Warning;
-    switch (kind) {
-        case K::Unreachable:
+    switch (error.kind()) {
+        case mondoc::Error::Kind::Unreachable:
             title = tr("AI hub unreachable");
-            body  = tr("The AI hub is unreachable. Check your API URL in config.json or try again.");
             break;
-        case K::RateLimited:
+        case mondoc::Error::Kind::RateLimited:
             title = tr("AI hub rate-limited");
-            body  = tr("The AI hub is rate-limiting requests. Wait a moment and try again.");
             icon  = QMessageBox::Information;
             break;
-        case K::BadResponse:
+        default:
             title = tr("AI hub returned an unexpected response");
-            body  = tr("The AI hub returned an unexpected response. Check the model name in config.json.");
             break;
-        case K::Cancelled:
-            return;
     }
-    QMessageBox box(icon, title, body, QMessageBox::Ok, this);
+    QMessageBox box(icon, title, llmErrorText(error), QMessageBox::Ok, this);
     box.button(QMessageBox::Ok)->setText(tr("Close"));
     box.exec();
 }
@@ -420,6 +414,7 @@ void FillSessionView::onFillWithAiClicked() {
         chatPane_->clearInput();
     }
 
+    aiFillGeneration_ = sessionGeneration_;
     aiThread_ = new QThread(this);
     aiWorker_ = new AiFillWorker(service_, currentSessionId_, currentSources(), freeForm);
     aiWorker_->moveToThread(aiThread_);
@@ -452,6 +447,14 @@ void FillSessionView::onFillWithAiClicked() {
 }
 
 void FillSessionView::onAiFinished(std::vector<mondoc::domain::Fill> fills) {
+    // Task 5 severs signal delivery from an abandoned fill thread on
+    // shutdown/clearSession, but a fill started just before a new session
+    // is opened can still race: the thread keeps running (detached, not
+    // joined) and its result lands here after openSession() has already
+    // pointed this view at a different session. Drop it if the generation
+    // that started it no longer matches.
+    if (aiFillGeneration_ != sessionGeneration_) return;
+
     fieldPane_->populateAi(fills);
 
     std::vector<mondoc::services::AiExtractedFact> facts;
@@ -487,18 +490,19 @@ void FillSessionView::onAiFinished(std::vector<mondoc::domain::Fill> fills) {
 }
 
 void FillSessionView::onAiFailed(QString message, int errorKind) {
+    if (aiFillGeneration_ != sessionGeneration_) return;
     restorePreFillSnapshot();
     fillWithAiBtn_->setText(tr("Fill with AI"));
     aiStatusLabel_->setVisible(false);
     if (chatPane_) chatPane_->setBusy(false);
     emit statusMessageRequested(tr("AI fill failed."), 4000);
 
-    mondoc::Error e{static_cast<mondoc::Error::Kind>(errorKind), message.toStdString()};
-    auto kind = mondoc::services::classifyAiFailure(e);
-    showAiErrorDialog(kind.value_or(mondoc::services::AiFailureKind::BadResponse), message);
+    showAiErrorDialog(
+        mondoc::Error{static_cast<mondoc::Error::Kind>(errorKind), message.toStdString()});
 }
 
 void FillSessionView::onAiCancelled() {
+    if (aiFillGeneration_ != sessionGeneration_) return;
     restorePreFillSnapshot();
     fillWithAiBtn_->setText(tr("Fill with AI"));
     aiStatusLabel_->setVisible(false);
@@ -587,12 +591,17 @@ void FillSessionView::onBackClicked() {
         box.setDefaultButton(keepBtn);
         box.exec();
         if (box.clickedButton() != discardBtn) return;
-        (void)service_.discardSession(currentSessionId_);
+        if (auto discardResult = service_.discardSession(currentSessionId_); !discardResult) {
+            qWarning("FillSessionView::onBackClicked: failed to discard session: %s",
+                     discardResult.error().message().c_str());
+        }
     }
     emit backRequested();
 }
 
-void FillSessionView::onSaveDraftClicked() { emit draftSaved(); }
+void FillSessionView::onSaveDraftClicked() {
+    emit statusMessageRequested(tr("All changes save automatically"), 3000);
+}
 
 void FillSessionView::onExportClicked() {
     ExportDialog dlg(this);

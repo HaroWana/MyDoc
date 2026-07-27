@@ -41,7 +41,6 @@ public:
 
 signals:
     void backRequested();
-    void draftSaved();
     void sessionExported(QString fileName);
     void exportFailed(QString message);
     void statusMessageRequested(QString message, int timeoutMs);
@@ -68,7 +67,7 @@ private:
     void capturePreFillSnapshot();
     void restorePreFillSnapshot();
     std::vector<mondoc::services::AiFillSourceInput> currentSources() const;
-    void showAiErrorDialog(mondoc::services::AiFailureKind kind, const QString& message);
+    void showAiErrorDialog(const mondoc::Error& error);
     void shutdownThread(QThread*& t, AiFillWorker*& worker, bool mustJoin);
     void shutdownThread(QThread*& t, AiRefineWorker*& worker, bool mustJoin);
 
@@ -77,6 +76,7 @@ private:
     mondoc::FillSessionId currentSessionId_;
     mondoc::TemplateId currentTemplateId_;
     int sessionGeneration_ = 0;
+    int aiFillGeneration_  = 0;
     int refineGeneration_  = 0;
 
     QPushButton* backBtn_       = nullptr;

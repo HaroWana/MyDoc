@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QStyledItemDelegate>
 #include <QTableWidget>
@@ -20,15 +21,25 @@
 
 #include "ai_field_detect_worker.hpp"
 #include "llm_error.hpp"
+#include "llm_error_text.hpp"
+#include "ui_style.hpp"
 
 namespace mondoc::ui {
 
 namespace {
 
 constexpr int kFieldIdRole       = Qt::UserRole + 1;
-constexpr int kRowStateRole      = Qt::UserRole + 2;  // 0=Normal, 1=AiNew, 2=AiImproved
+constexpr int kRowStateRole      = Qt::UserRole + 2;
 constexpr int kSuggestedNameRole = Qt::UserRole + 3;
 constexpr int kSuggestedTypeRole = Qt::UserRole + 4;
+
+enum class AiRowState { None, Proposal, Improvement };
+
+const QString kAiPrefix = QStringLiteral("[AI] ");
+
+QString stripAiPrefix(const QString& text) {
+    return text.startsWith(kAiPrefix) ? text.mid(kAiPrefix.size()) : text;
+}
 
 QStringList typeNames() {
     return {
@@ -115,11 +126,6 @@ public:
 
 }  // namespace
 
-QString accentStyle() {
-    return QStringLiteral("QPushButton { background-color: #2563EB; color: white; "
-                          "padding: 6px 12px; }");
-}
-
 SchemaDockWidget::SchemaDockWidget(QWidget* parent)
     : QDockWidget(parent),
       table_(new QTableWidget(this)),
@@ -146,7 +152,7 @@ SchemaDockWidget::SchemaDockWidget(QWidget* parent)
     table_->setItemDelegateForColumn(1, new FieldTypeDelegate(this));
     table_->setAccessibleName(tr("Schema fields"));
 
-    saveBtn_->setStyleSheet(accentStyle());
+    saveBtn_->setStyleSheet(accentButtonStyle());
     saveBtn_->setAccessibleName(tr("Save Schema"));
     discardBtn_->setAccessibleName(tr("Discard Changes"));
     addFieldBtn_->setAccessibleName(tr("Add Field"));
@@ -154,13 +160,13 @@ SchemaDockWidget::SchemaDockWidget(QWidget* parent)
     removeFieldBtn_->setToolTip(tr("Remove Selected Field"));
     removeFieldBtn_->setEnabled(false);
 
-    detectWithAiBtn_->setStyleSheet(accentStyle());
+    detectWithAiBtn_->setStyleSheet(accentButtonStyle());
     detectWithAiBtn_->setAccessibleName(tr("Detect with AI"));
     detectWithAiBtn_->setEnabled(false);
     detectWithAiBtn_->setToolTip(
         tr("Configure the LLM endpoint in Settings to enable AI detection."));
 
-    acceptProposalBtn_->setStyleSheet(accentStyle());
+    acceptProposalBtn_->setStyleSheet(accentButtonStyle());
     acceptProposalBtn_->setAccessibleName(tr("Accept"));
     acceptProposalBtn_->setVisible(false);
 
@@ -208,7 +214,7 @@ SchemaDockWidget::SchemaDockWidget(QWidget* parent)
     connect(addFieldBtn_, &QPushButton::clicked, this, &SchemaDockWidget::onAddField);
     connect(removeFieldBtn_, &QPushButton::clicked, this, &SchemaDockWidget::onRemoveField);
     connect(discardBtn_, &QPushButton::clicked, this, &SchemaDockWidget::schemaDiscarded);
-    connect(saveBtn_, &QPushButton::clicked, this, &SchemaDockWidget::schemaSaved);
+    connect(saveBtn_, &QPushButton::clicked, this, &SchemaDockWidget::onSaveClicked);
     connect(table_, &QTableWidget::itemSelectionChanged,
             this, &SchemaDockWidget::onSelectionChanged);
     connect(detectWithAiBtn_, &QPushButton::clicked,
@@ -342,18 +348,33 @@ void SchemaDockWidget::onRemoveField() {
     onSelectionChanged();
 }
 
+void SchemaDockWidget::onSaveClicked() {
+    for (int row = 0; row < table_->rowCount(); ++row) {
+        auto* nameItem = table_->item(row, 0);
+        const QString name = nameItem ? nameItem->text().trimmed() : QString();
+        if (name.isEmpty()) {
+            QMessageBox::warning(this, tr("Cannot Save Schema"),
+                tr("Row %1 has no field name. Fill in a name or remove the row "
+                   "before saving.").arg(row + 1));
+            return;
+        }
+    }
+    emit schemaSaved();
+}
+
 void SchemaDockWidget::onSelectionChanged() {
     const int row = table_->currentRow();
     removeFieldBtn_->setEnabled(row >= 0);
-    const int state = (row >= 0 && table_->item(row, 0))
-        ? table_->item(row, 0)->data(kRowStateRole).toInt() : 0;
-    acceptProposalBtn_->setVisible(state != 0);
-    discardProposalBtn_->setVisible(state != 0);
+    const auto state = (row >= 0 && table_->item(row, 0))
+        ? static_cast<AiRowState>(table_->item(row, 0)->data(kRowStateRole).toInt())
+        : AiRowState::None;
+    acceptProposalBtn_->setVisible(state != AiRowState::None);
+    discardProposalBtn_->setVisible(state != AiRowState::None);
 }
 
 void SchemaDockWidget::restoreIdleButton() {
     detectWithAiBtn_->setText(tr("Detect with AI"));
-    detectWithAiBtn_->setStyleSheet(accentStyle());
+    detectWithAiBtn_->setStyleSheet(accentButtonStyle());
     aiStatusLabel_->setVisible(false);
 }
 
@@ -410,8 +431,8 @@ void SchemaDockWidget::onProposalsReady(
 
         auto* nameItem = table_->item(row, 0);
         if (nameItem) {
-            nameItem->setText(QStringLiteral("[AI] ") + QString::fromStdString(field.name_));
-            nameItem->setData(kRowStateRole, 1);
+            nameItem->setText(kAiPrefix + QString::fromStdString(field.name_));
+            nameItem->setData(kRowStateRole, static_cast<int>(AiRowState::Proposal));
         }
     }
 
@@ -420,15 +441,14 @@ void SchemaDockWidget::onProposalsReady(
         for (int row = 0; row < table_->rowCount(); ++row) {
             auto* nameItem = table_->item(row, 0);
             if (!nameItem) continue;
-            std::string cellText = nameItem->text().toStdString();
-            if (cellText.rfind("[AI] ", 0) == 0) cellText = cellText.substr(5);
+            const std::string cellText = stripAiPrefix(nameItem->text()).toStdString();
             if (normalizeName(cellText) != normalized) continue;
 
             nameItem->setBackground(QColor(0xFE, 0xF9, 0xC3));
             if (auto* typeItem = table_->item(row, 1)) {
                 typeItem->setBackground(QColor(0xFE, 0xF9, 0xC3));
             }
-            nameItem->setData(kRowStateRole, 2);
+            nameItem->setData(kRowStateRole, static_cast<int>(AiRowState::Improvement));
             nameItem->setData(kSuggestedNameRole,
                               QString::fromStdString(imp.suggested_name));
             nameItem->setData(kSuggestedTypeRole,
@@ -449,34 +469,24 @@ void SchemaDockWidget::onProposalsReady(
 void SchemaDockWidget::onDetectionFailed(QString message, int errorKind) {
     restoreIdleButton();
 
-    const auto kind = static_cast<mondoc::adapters::ai::LlmError::Kind>(errorKind);
-    QString errorText;
-    switch (kind) {
+    const auto llmKind = static_cast<mondoc::adapters::ai::LlmError::Kind>(errorKind);
+    auto kind = mondoc::Error::Kind::BadResponse;
+    switch (llmKind) {
         case mondoc::adapters::ai::LlmError::Kind::Unreachable:
-            errorText = tr("LLM hub is unreachable. Check your API URL in Settings.");
+            kind = mondoc::Error::Kind::Unreachable;
             break;
         case mondoc::adapters::ai::LlmError::Kind::RateLimited:
-            errorText = tr("LLM hub is rate-limiting requests. Try again in a moment.");
+            kind = mondoc::Error::Kind::RateLimited;
             break;
-        case mondoc::adapters::ai::LlmError::Kind::BadResponse: {
-            const std::string msg = message.toLower().toStdString();
-            if (msg.find("context") != std::string::npos ||
-                msg.find("length") != std::string::npos) {
-                errorText = tr("Document is too large for AI field detection. "
-                               "Register the template manually.");
-            } else {
-                errorText = tr("LLM hub returned an unexpected response. "
-                               "Check the model name in Settings.");
-            }
+        case mondoc::adapters::ai::LlmError::Kind::BadResponse:
+            kind = mondoc::Error::Kind::BadResponse;
             break;
-        }
-        default:
-            errorText = tr("LLM hub returned an unexpected response. "
-                           "Check the model name in Settings.");
+        case mondoc::adapters::ai::LlmError::Kind::Cancelled:
+            kind = mondoc::Error::Kind::Cancelled;
             break;
     }
 
-    aiErrorLabel_->setText(errorText);
+    aiErrorLabel_->setText(llmErrorText(mondoc::Error{kind, message.toStdString()}));
     aiErrorLabel_->setVisible(true);
 }
 
@@ -490,15 +500,11 @@ void SchemaDockWidget::onAcceptProposal() {
     auto* nameItem = table_->item(row, 0);
     if (!nameItem) return;
 
-    const int state = nameItem->data(kRowStateRole).toInt();
-    if (state == 1) {
-        QString text = nameItem->text();
-        if (text.startsWith(QStringLiteral("[AI] "))) {
-            text = text.mid(5);
-        }
-        nameItem->setText(text);
-        nameItem->setData(kRowStateRole, 0);
-    } else if (state == 2) {
+    const auto state = static_cast<AiRowState>(nameItem->data(kRowStateRole).toInt());
+    if (state == AiRowState::Proposal) {
+        nameItem->setText(stripAiPrefix(nameItem->text()));
+        nameItem->setData(kRowStateRole, static_cast<int>(AiRowState::None));
+    } else if (state == AiRowState::Improvement) {
         const QString suggestedName = nameItem->data(kSuggestedNameRole).toString();
         const QString suggestedType = nameItem->data(kSuggestedTypeRole).toString();
 
@@ -513,7 +519,7 @@ void SchemaDockWidget::onAcceptProposal() {
         if (auto* typeItem = table_->item(row, 1)) {
             typeItem->setBackground(QBrush{});
         }
-        nameItem->setData(kRowStateRole, 0);
+        nameItem->setData(kRowStateRole, static_cast<int>(AiRowState::None));
         nameItem->setData(kSuggestedNameRole, QVariant{});
         nameItem->setData(kSuggestedTypeRole, QVariant{});
     }
@@ -527,15 +533,15 @@ void SchemaDockWidget::onDiscardProposal() {
     auto* nameItem = table_->item(row, 0);
     if (!nameItem) return;
 
-    const int state = nameItem->data(kRowStateRole).toInt();
-    if (state == 1) {
+    const auto state = static_cast<AiRowState>(nameItem->data(kRowStateRole).toInt());
+    if (state == AiRowState::Proposal) {
         table_->removeRow(row);
-    } else if (state == 2) {
+    } else if (state == AiRowState::Improvement) {
         nameItem->setBackground(QBrush{});
         if (auto* typeItem = table_->item(row, 1)) {
             typeItem->setBackground(QBrush{});
         }
-        nameItem->setData(kRowStateRole, 0);
+        nameItem->setData(kRowStateRole, static_cast<int>(AiRowState::None));
         nameItem->setData(kSuggestedNameRole, QVariant{});
         nameItem->setData(kSuggestedTypeRole, QVariant{});
     }
@@ -547,8 +553,7 @@ bool SchemaDockWidget::nameExistsInTable(const std::string& normalizedName) cons
     for (int row = 0; row < table_->rowCount(); ++row) {
         auto* item = table_->item(row, 0);
         if (!item) continue;
-        std::string text = item->text().toStdString();
-        if (text.rfind("[AI] ", 0) == 0) text = text.substr(5);
+        const std::string text = stripAiPrefix(item->text()).toStdString();
         if (normalizeName(text) == normalizedName) return true;
     }
     return false;

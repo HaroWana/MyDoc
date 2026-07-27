@@ -62,7 +62,6 @@ private slots:
 
     void onFillSessionClicked();
     void onSessionBackRequested();
-    void onSessionDraftSaved();
     void onSessionExported(QString fileName);
     void onSessionExportFailed(QString message);
     void onResumeRequested(mondoc::FillSessionId sessionId);

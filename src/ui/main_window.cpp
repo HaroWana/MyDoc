@@ -31,6 +31,7 @@
 #include <QVBoxLayout>
 #include <QVariant>
 #include <QWidget>
+#include <QtGlobal>
 
 #include <chrono>
 #include <ctime>
@@ -44,6 +45,7 @@
 #include "schema_dock_widget.hpp"
 #include "settings_dialog.hpp"
 #include "supported_formats.hpp"
+#include "ui_style.hpp"
 
 namespace mondoc::ui {
 
@@ -142,9 +144,7 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
     tb->setMovable(false);
     auto* regBtn = new QPushButton(tr("Register Template"), tb);
     regBtn->setShortcut(QKeySequence("Ctrl+O"));
-    regBtn->setStyleSheet(
-        QStringLiteral("QPushButton { background-color: #2563EB; color: white; "
-                       "padding: 6px 12px; }"));
+    regBtn->setStyleSheet(accentButtonStyle());
     regBtn->setAccessibleName(tr("Register Template"));
     regBtn->setToolTip(tr("Register Template"));
     tb->addWidget(regBtn);
@@ -170,8 +170,6 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
 
     connect(fillSessionView_, &FillSessionView::backRequested,
             this, &MainWindow::onSessionBackRequested);
-    connect(fillSessionView_, &FillSessionView::draftSaved,
-            this, &MainWindow::onSessionDraftSaved);
     connect(fillSessionView_, &FillSessionView::sessionExported,
             this, &MainWindow::onSessionExported);
     connect(fillSessionView_, &FillSessionView::exportFailed,
@@ -255,9 +253,7 @@ void MainWindow::buildDetailPage(QWidget* page) {
 
     auto* primaryRow = new QHBoxLayout();
     detailFillBtn_ = new QPushButton(tr("Fill Session\xe2\x80\xa6"), page);
-    detailFillBtn_->setStyleSheet(
-        QStringLiteral("QPushButton { background-color: #2563EB; color: white; "
-                       "padding: 6px 12px; }"));
+    detailFillBtn_->setStyleSheet(accentButtonStyle());
     detailFillBtn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+F")));
     detailFillBtn_->setAccessibleName(tr("Fill Session"));
     detailFillBtn_->setToolTip(tr("Fill Session"));
@@ -528,7 +524,7 @@ bool MainWindow::acceptableDrop(const QList<QUrl>& urls) const {
 void MainWindow::setDropHighlight(bool active) {
     if (active) {
         centralWidget()->setStyleSheet(
-            QStringLiteral("QSplitter { border: 2px solid #2563EB; }"));
+            QStringLiteral("QSplitter { border: 2px solid %1; }").arg(accentColor()));
     } else {
         centralWidget()->setStyleSheet(QString{});
     }
@@ -598,7 +594,10 @@ void MainWindow::onFillSessionClicked() {
     QString err;
     if (!fillSessionView_->openSession(*sessionId, sourcePaths, &err)) {
         QMessageBox::critical(this, tr("MonDoc"), err);
-        (void)fillService_.discardSession(*sessionId);
+        if (auto discardResult = fillService_.discardSession(*sessionId); !discardResult) {
+            qWarning("MainWindow::onFillSessionClicked: failed to discard session "
+                     "after failed open: %s", discardResult.error().message().c_str());
+        }
         return;
     }
     centralStack_->setCurrentIndex(2);
@@ -608,10 +607,6 @@ void MainWindow::onSessionBackRequested() {
     fillSessionView_->clearSession();
     centralStack_->setCurrentIndex(templateList_->count() == 0 ? 0 : 1);
     refreshResumeBanner();
-}
-
-void MainWindow::onSessionDraftSaved() {
-    statusBar()->showMessage(tr("Draft saved."), 2000);
 }
 
 void MainWindow::onSessionExported(QString fileName) {

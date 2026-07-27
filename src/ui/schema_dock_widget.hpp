@@ -37,6 +37,7 @@ signals:
 private slots:
     void onAddField();
     void onRemoveField();
+    void onSaveClicked();
     void onSelectionChanged();
     void onDetectWithAiClicked();
     void onProposalsReady(std::vector<mondoc::domain::Field> newFields,

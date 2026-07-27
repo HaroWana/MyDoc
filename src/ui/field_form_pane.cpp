@@ -19,6 +19,7 @@
 #include <QVBoxLayout>
 
 #include "edit_field_command.hpp"
+#include "ui_style.hpp"
 
 namespace mondoc::ui {
 
@@ -265,7 +266,9 @@ void FieldFormPane::markFilled(QWidget* input, mondoc::domain::Confidence c) {
         case Confidence::High:   border = QStringLiteral("border: 1px solid #22C55E;"); break;
         case Confidence::Medium: border = QStringLiteral("border: 1px solid #F59E0B;"); break;
         case Confidence::Low:    border = QStringLiteral("border: 1px solid #DC2626;"); break;
-        case Confidence::Manual: border = QStringLiteral("border: 1px solid #2563EB;"); break;
+        case Confidence::Manual:
+            border = QStringLiteral("border: 1px solid %1;").arg(accentColor());
+            break;
     }
     input->setStyleSheet(border);
 }

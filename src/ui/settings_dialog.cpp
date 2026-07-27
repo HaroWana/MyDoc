@@ -9,6 +9,7 @@
 #include <QVBoxLayout>
 
 #include "mondoc/expected.hpp"
+#include "ui_style.hpp"
 
 namespace mondoc::ui {
 
@@ -55,9 +56,7 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
     form->addRow(tr("Model:"), modelEdit_);
 
     if (auto* saveBtn = buttons_->button(QDialogButtonBox::Save)) {
-        saveBtn->setStyleSheet(
-            QStringLiteral("QPushButton { background-color: #2563EB; color: white; "
-                           "padding: 8px 16px; }"));
+        saveBtn->setStyleSheet(accentButtonStyle());
         saveBtn->setAccessibleName(tr("Save settings"));
     }
     if (auto* cancelBtn = buttons_->button(QDialogButtonBox::Cancel)) {

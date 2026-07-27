@@ -11,6 +11,8 @@
 #include <QTextCursor>
 #include <QVBoxLayout>
 
+#include "ui_style.hpp"
+
 namespace mondoc::ui {
 
 ChatPane::ChatPane(QWidget* parent) : QWidget(parent) {
@@ -38,8 +40,7 @@ ChatPane::ChatPane(QWidget* parent) : QWidget(parent) {
     input_->setAccessibleName(tr("Chat with AI"));
 
     sendBtn_ = new QPushButton(tr("Send Message"), this);
-    sendBtn_->setStyleSheet(QStringLiteral(
-        "background-color: #2563EB; color: white; padding: 6px 12px;"));
+    sendBtn_->setStyleSheet(accentButtonStyle());
     sendBtn_->setAccessibleName(tr("Send chat message"));
     sendBtn_->setEnabled(false);
 

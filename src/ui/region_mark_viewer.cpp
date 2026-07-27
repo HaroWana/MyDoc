@@ -22,6 +22,8 @@
 #include <fstream>
 #include <sstream>
 
+#include "ui_style.hpp"
+
 namespace mondoc::ui {
 
 class PdfPageWidget : public QWidget {
@@ -146,10 +148,8 @@ RegionMarkViewer::RegionMarkViewer(const std::filesystem::path& sourcePath,
     saveFieldBtn_->setAccessibleName(tr("Save field"));
     closeBtn_->setAccessibleName(tr("Close without saving"));
 
-    const QString accentStyle = QStringLiteral(
-        "QPushButton { background-color: #2563EB; color: white; padding: 8px 16px; }");
-    confirmRegionBtn_->setStyleSheet(accentStyle);
-    saveFieldBtn_->setStyleSheet(accentStyle);
+    confirmRegionBtn_->setStyleSheet(accentButtonStyle());
+    saveFieldBtn_->setStyleSheet(accentButtonStyle());
 
     confirmRegionBtn_->setEnabled(false);
     saveFieldBtn_->setEnabled(false);
