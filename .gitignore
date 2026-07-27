@@ -6,6 +6,9 @@ build/
 build-*/
 out/
 
+# ctest cost-data from in-source ctest runs
+Testing/
+
 # vcpkg
 vcpkg_installed/
 .vcpkg-root

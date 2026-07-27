@@ -10,6 +10,15 @@
 #include <string>
 #include <thread>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 using namespace mondoc::adapters::ai;
 
 TEST_CASE("LlmClient::classifyHttpStatus: 429 -> RateLimited",
@@ -202,14 +211,42 @@ TEST_CASE("LlmClient::chat: cancellation flag aborts an in-flight body read (SAI
 
 TEST_CASE("LlmClient::chat: unreachable host -> Unreachable (APP-03)",
           "[adapters.ai][llm_client][app06]") {
-    // Bind a server briefly to discover a free port, then stop it so the port
-    // becomes refused. cpp-httplib's connect should then fail.
-    httplib::Server probe;
-    int port = probe.bind_to_any_port("127.0.0.1");
-    if (port <= 0) {
-        SKIP("could not bind probe server");
+    // A bound-but-listening httplib server would accept the TCP handshake and
+    // only fail after the full read timeout. Instead, bind a plain socket to
+    // claim a free port, then close it immediately so the port actively
+    // refuses connections (RST) and cpp-httplib's connect fails right away.
+#ifdef _WIN32
+    SOCKET sock = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) {
+        SKIP("could not create probe socket");
     }
-    // Don't listen — let the OS reject connections.
+#else
+    int sock = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        SKIP("could not create probe socket");
+    }
+#endif
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = 0;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    int port = 0;
+    if (::bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0) {
+        socklen_t addrLen = sizeof(addr);
+        if (::getsockname(sock, reinterpret_cast<sockaddr*>(&addr), &addrLen) == 0) {
+            port = ntohs(addr.sin_port);
+        }
+    }
+#ifdef _WIN32
+    closesocket(sock);
+#else
+    ::close(sock);
+#endif
+    if (port <= 0) {
+        SKIP("could not bind probe socket");
+    }
 
     auto client = LlmClient::create("http://127.0.0.1:" + std::to_string(port), "k").value();
     auto result = client->chat("{}");

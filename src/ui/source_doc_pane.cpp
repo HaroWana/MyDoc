@@ -12,6 +12,8 @@
 #include <QVBoxLayout>
 #include <QtGlobal>
 
+#include <algorithm>
+
 namespace mondoc::ui {
 
 namespace {
@@ -140,8 +142,14 @@ void SourceDocPane::highlightRef(const mondoc::domain::SourceRef& ref) {
     // UTF-16 code unit offsets, so re-decode the UTF-8 prefix up to each
     // offset and count its UTF-16 length.
     const QByteArray utf8 = view->toPlainText().toUtf8();
-    const int start = QString::fromUtf8(utf8.data(), static_cast<int>(ref.range_.begin_)).size();
-    const int end   = QString::fromUtf8(utf8.data(), static_cast<int>(ref.range_.end_)).size();
+    // refs are validated upstream, but clamp anyway so stale/out-of-range
+    // offsets can't read past the buffer.
+    const int beginOffset = std::min(static_cast<int>(ref.range_.begin_),
+                                      static_cast<int>(utf8.size()));
+    const int endOffset   = std::min(static_cast<int>(ref.range_.end_),
+                                      static_cast<int>(utf8.size()));
+    const int start = QString::fromUtf8(utf8.data(), beginOffset).size();
+    const int end   = QString::fromUtf8(utf8.data(), endOffset).size();
     QTextCursor cur(view->document());
     cur.setPosition(start);
     cur.setPosition(end, QTextCursor::KeepAnchor);
