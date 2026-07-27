@@ -28,7 +28,7 @@ mondoc::domain::FieldType inferFieldType(const pugi::xml_node& sdtPr) {
     if (sdtPr.child("w:date"))         return mondoc::domain::FieldType::Date;
     if (sdtPr.child("w:dropDownList")) return mondoc::domain::FieldType::Dropdown;
     if (sdtPr.child("w:comboBox"))     return mondoc::domain::FieldType::Dropdown;
-    if (sdtPr.child("w:checkbox"))     return mondoc::domain::FieldType::Checkbox;
+    if (sdtPr.child("w14:checkbox"))   return mondoc::domain::FieldType::Checkbox;
     if (sdtPr.child("w:richText"))     return mondoc::domain::FieldType::Paragraph;
     if (sdtPr.child("w:num"))          return mondoc::domain::FieldType::Number;
     return mondoc::domain::FieldType::Text;

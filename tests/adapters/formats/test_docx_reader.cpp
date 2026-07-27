@@ -144,6 +144,31 @@ TEST_CASE("DocxDocumentReader: w:sdt with w:date infers FieldType::Date",
     REQUIRE(result->fields_[0].type_ == FieldType::Date);
 }
 
+TEST_CASE("DocxDocumentReader: w:sdt with w14:checkbox infers FieldType::Checkbox",
+          "[formats.docx]") {
+    TempFile tmp{uniqueTempDocxPath()};
+    constexpr std::string_view xml = R"XML(<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
+  <w:body>
+    <w:sdt>
+      <w:sdtPr>
+        <w:alias w:val="agree_to_terms"/>
+        <w14:checkbox><w14:checked w14:val="0"/></w14:checkbox>
+      </w:sdtPr>
+      <w:sdtContent><w:r><w:t>&#9744;</w:t></w:r></w:sdtContent>
+    </w:sdt>
+  </w:body>
+</w:document>)XML";
+    writeMinimalDocx(tmp.path, xml);
+
+    DocxDocumentReader reader;
+    auto result = reader.read(tmp.path);
+    REQUIRE(result.has_value());
+    REQUIRE(result->fields_.size() == 1);
+    REQUIRE(result->fields_[0].name_ == "agree_to_terms");
+    REQUIRE(result->fields_[0].type_ == FieldType::Checkbox);
+}
+
 TEST_CASE("DocxDocumentReader: extracts {{placeholder}} from paragraph text",
           "[formats.docx]") {
     TempFile tmp{uniqueTempDocxPath()};
