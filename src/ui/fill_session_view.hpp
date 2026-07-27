@@ -31,6 +31,7 @@ public:
     FillSessionView(mondoc::services::FillSessionService& service,
                     mondoc::domain::ITemplateRepository& templateRepo,
                     QWidget* parent = nullptr);
+    ~FillSessionView() override;
 
     bool openSession(const mondoc::FillSessionId& id,
                      const std::vector<std::filesystem::path>& sourcePaths,
@@ -69,6 +70,8 @@ private:
     void restorePreFillSnapshot();
     std::vector<mondoc::services::AiFillSourceInput> currentSources() const;
     void showAiErrorDialog(mondoc::services::AiFailureKind kind, const QString& message);
+    void shutdownThread(QThread*& t, AiFillWorker* worker);
+    void shutdownThread(QThread*& t);
 
     mondoc::services::FillSessionService& service_;
     mondoc::domain::ITemplateRepository& templateRepo_;

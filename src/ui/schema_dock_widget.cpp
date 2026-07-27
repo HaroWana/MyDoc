@@ -234,6 +234,24 @@ SchemaDockWidget::SchemaDockWidget(QWidget* parent)
             this, &SchemaDockWidget::onDiscardProposal);
 }
 
+void SchemaDockWidget::shutdownThread(QThread*& t, AiFieldDetectWorker* worker) {
+    QThread* thread = t;
+    if (!thread) return;
+    if (worker) worker->requestCancel();
+    if (thread->isRunning()) {
+        thread->quit();
+        if (!thread->wait(5000)) {
+            thread->terminate();
+            thread->wait();
+        }
+    }
+    t = nullptr;
+}
+
+SchemaDockWidget::~SchemaDockWidget() {
+    shutdownThread(aiThread_, aiWorker_);
+}
+
 void SchemaDockWidget::setAiConfigured(bool configured) {
     detectWithAiBtn_->setEnabled(configured);
 }

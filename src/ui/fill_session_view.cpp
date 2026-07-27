@@ -242,10 +242,41 @@ bool FillSessionView::openSession(const mondoc::FillSessionId& id,
     return true;
 }
 
+void FillSessionView::shutdownThread(QThread*& t, AiFillWorker* worker) {
+    QThread* thread = t;
+    if (!thread) return;
+    if (worker) worker->requestCancel();
+    if (thread->isRunning()) {
+        thread->quit();
+        if (!thread->wait(5000)) {
+            thread->terminate();
+            thread->wait();
+        }
+    }
+    t = nullptr;
+}
+
+void FillSessionView::shutdownThread(QThread*& t) {
+    QThread* thread = t;
+    if (!thread) return;
+    if (thread->isRunning()) {
+        thread->quit();
+        if (!thread->wait(5000)) {
+            thread->terminate();
+            thread->wait();
+        }
+    }
+    t = nullptr;
+}
+
+FillSessionView::~FillSessionView() {
+    shutdownThread(aiThread_, aiWorker_);
+    shutdownThread(refineThread_);
+}
+
 void FillSessionView::clearSession() {
-    if (aiWorker_) aiWorker_->requestCancel();
-    if (aiThread_ && aiThread_->isRunning()) aiThread_->quit();
-    if (refineThread_ && refineThread_->isRunning()) refineThread_->quit();
+    shutdownThread(aiThread_, aiWorker_);
+    shutdownThread(refineThread_);
 
     preFillSnapshot_.clear();
     sourceDocIds_.clear();
