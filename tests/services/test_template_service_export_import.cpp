@@ -194,3 +194,43 @@ TEST_CASE("TemplateService::importTemplate: importAsCopy=true creates renamed co
     REQUIRE(list.has_value());
     REQUIRE(list->size() == 2);
 }
+
+TEST_CASE("TemplateService::importTemplate: importAsCopy=true preserves the original template [phase05][services.template_export_import]") {
+    TempFile src{uniqueTempPath(".txt")};
+    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+
+    FakeRepository repo;
+    TemplateService svc{repo};
+    auto t = makeTemplate("t-copy-preserve", "Preserve Test", src.path);
+    REQUIRE(repo.save(t).has_value());
+
+    TempFile bundle{uniqueTempPath(".mondoc")};
+    REQUIRE(svc.exportTemplate(t.id_, bundle.path).has_value());
+
+    auto result = svc.importTemplate(bundle.path, /*overwrite=*/false, /*importAsCopy=*/true);
+    REQUIRE(result.has_value());
+    REQUIRE(result->name_ == "Preserve Test (imported)");
+    REQUIRE(result->id_.value() != t.id_.value());
+    for (const auto& f : result->fields_) {
+        for (const auto& origField : t.fields_) {
+            REQUIRE(f.id_.value() != origField.id_.value());
+        }
+    }
+
+    auto list = svc.listTemplates();
+    REQUIRE(list.has_value());
+    REQUIRE(list->size() == 2);
+
+    bool foundOriginal = false;
+    bool foundCopy = false;
+    for (const auto& tmpl : *list) {
+        if (tmpl.id_.value() == t.id_.value() && tmpl.name_ == "Preserve Test") {
+            foundOriginal = true;
+        }
+        if (tmpl.name_ == "Preserve Test (imported)" && tmpl.id_.value() != t.id_.value()) {
+            foundCopy = true;
+        }
+    }
+    REQUIRE(foundOriginal);
+    REQUIRE(foundCopy);
+}

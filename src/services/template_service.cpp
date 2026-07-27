@@ -338,6 +338,10 @@ TemplateService::importTemplate(const std::filesystem::path& src,
                 mondoc::Error::generic("cannot auto-rename: too many copies"));
         }
         tpl.name_ = *chosen;
+        tpl.id_ = mondoc::TemplateId{generateUuid()};
+        for (auto& f : tpl.fields_) {
+            f.id_ = mondoc::FieldId{generateUuid()};
+        }
     }
 
     if (!tpl.source_path_.empty()) {
