@@ -751,6 +751,10 @@ void MainWindow::onMarkRegion() {
     RegionMarkViewer dlg(selectedTemplate_->source_path_,
                          QString::fromStdString(selectedTemplate_->name_), this);
     if (dlg.exec() != QDialog::Accepted) return;
+    pendingTemplate_ = *selectedTemplate_;
+    pendingDocumentText_.clear();
+    schemaWidget_->setDocumentText(pendingDocumentText_);
+    schemaWidget_->populate(pendingTemplate_.fields_);
     schemaWidget_->addFieldExternal(dlg.field());
     schemaWidget_->show();
 }
