@@ -31,19 +31,20 @@ struct RunInput {
     std::string free_form_text_;
 };
 
-struct RefineInput {
-    const mondoc::domain::Template* tpl_ = nullptr;
-    std::vector<AiFillSourceDoc> sources_;
-    std::vector<mondoc::domain::Fill> current_fills_;
-    std::string user_message_;
-};
-
 struct ExtractedFact {
     std::size_t source_index_ = 0;
     std::int64_t char_start_  = 0;
     std::int64_t char_end_    = 0;
     std::string excerpt_;
     std::string summary_;
+};
+
+struct RefineInput {
+    const mondoc::domain::Template* tpl_ = nullptr;
+    std::vector<AiFillSourceDoc> sources_;
+    std::vector<mondoc::domain::Fill> current_fills_;
+    std::vector<ExtractedFact> last_pass1_facts_;
+    std::string user_message_;
 };
 
 class AiFillPipeline {

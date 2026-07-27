@@ -48,6 +48,7 @@ using mondoc::adapters::ai::AiFillPipeline;
 using mondoc::adapters::ai::ILlmClient;
 using mondoc::adapters::ai::LlmConfig;
 using mondoc::adapters::ai::LlmError;
+using mondoc::services::AiExtractedFact;
 using mondoc::services::AiFailureKind;
 using mondoc::services::AiFillSourceInput;
 using mondoc::services::classifyAiFailure;
@@ -215,8 +216,9 @@ public:
     }
 
     mondoc::expected<void, mondoc::Error>
-    replaceSourceRefs(const FillSessionId&, const FieldId&,
-                      const std::vector<SourceRef>&) override {
+    replaceSourceRefs(const FillSessionId&, const FieldId& fieldId,
+                      const std::vector<SourceRef>& refs) override {
+        replaceSourceRefsCalls_.push_back({fieldId.value(), refs});
         return {};
     }
 
@@ -225,7 +227,12 @@ public:
         std::string fieldId;
         std::string value;
     };
+    struct ReplaceSourceRefsCall {
+        std::string fieldId;
+        std::vector<SourceRef> refs;
+    };
     std::vector<UpsertCall> upsertCalls_;
+    std::vector<ReplaceSourceRefsCall> replaceSourceRefsCalls_;
     std::map<std::string, FillSession> store_;
 };
 
@@ -491,8 +498,10 @@ TEST_CASE("FillSessionService: exportSession dispatches Text format and transiti
     REQUIRE(fillRepo.store_["s1"].status_ == FillStatus::Exported);
 }
 
-TEST_CASE("FillSessionService: exportSession Markdown format dispatches to TextDocumentWriter",
-          "[services.fill_session]") {
+TEST_CASE("FillSessionService: exportSession Text format dispatches to TextDocumentWriter for a .md destination",
+          "[services.fill_session][dsa-17]") {
+    // DSA-17/XC-15: ExportFormat::Markdown was removed (it produced byte-identical
+    // output to Text); .md destinations are now reached via ExportFormat::Text.
     TempFile srcFile{uniqueTempPath(".md")};
     writeFile(srcFile.path, "# {{title}}\n\nBody.");
 
@@ -512,7 +521,7 @@ TEST_CASE("FillSessionService: exportSession Markdown format dispatches to TextD
 
     TempFile dst{uniqueTempPath(".md")};
     FillSessionService svc{fillRepo, tplRepo};
-    auto r = svc.exportSession(FillSessionId{"s1"}, ExportFormat::Markdown, dst.path);
+    auto r = svc.exportSession(FillSessionId{"s1"}, ExportFormat::Text, dst.path);
 
     REQUIRE(r.has_value());
     REQUIRE(readFile(dst.path) == "# Hi\n\nBody.");
@@ -912,6 +921,98 @@ TEST_CASE("FillSessionService::refineField: manual-sticky fill is preserved (REV
     REQUIRE(fillRepo.upsertCalls_.empty());
     REQUIRE(fillRepo.store_["s1"].fills_[0].current_value_ == "user typed");
     REQUIRE(fillRepo.store_["s1"].fills_[0].confidence_ == Confidence::Manual);
+}
+
+TEST_CASE("FillSessionService::refineField: passes prior facts into the pipeline (XC-9)",
+          "[services.fill_session][adapters.ai][xc-9]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing);
+
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"updates", nlohmann::json::array()}}));
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    AiExtractedFact factA;
+    factA.excerpt_ = "FACT_A_EXCERPT";
+    AiExtractedFact factB;
+    factB.excerpt_ = "FACT_B_EXCERPT";
+
+    std::atomic<bool> cancelled{false};
+    auto r = svc.refineField(FillSessionId{"s1"}, "rename", {}, {factA, factB}, cancelled);
+
+    REQUIRE(r.has_value());
+    REQUIRE(fake.chatCalls_.size() == 1);
+    REQUIRE(fake.chatCalls_[0].find("FACT_A_EXCERPT") != std::string::npos);
+    REQUIRE(fake.chatCalls_[0].find("FACT_B_EXCERPT") != std::string::npos);
+}
+
+TEST_CASE("FillSessionService::refineField: clears stale source refs after a successful write (DSA-8)",
+          "[services.fill_session][adapters.ai][dsa-8]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+
+    Fill f1; f1.field_id_ = FieldId{"f1"};
+    f1.current_value_ = "old"; f1.confidence_ = Confidence::High;
+    SourceRef staleRef;
+    staleRef.excerpt_ = "stale evidence for old value";
+    f1.source_refs_   = {staleRef};
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing, {f1});
+
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"updates", nlohmann::json::array({
+            nlohmann::json{{"field_id","f1"},{"value","new"},{"confidence","high"}},
+        })}}));
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    std::atomic<bool> cancelled{false};
+    auto r = svc.refineField(FillSessionId{"s1"}, "rename", {}, {}, cancelled);
+
+    REQUIRE(r.has_value());
+    REQUIRE(fillRepo.replaceSourceRefsCalls_.size() == 1);
+    REQUIRE(fillRepo.replaceSourceRefsCalls_[0].fieldId == "f1");
+    REQUIRE(fillRepo.replaceSourceRefsCalls_[0].refs.empty());
+}
+
+TEST_CASE("FillSessionService::refineField: does not clear refs when the write was skipped "
+          "for a Manual-protected field (DSA-8)",
+          "[services.fill_session][adapters.ai][dsa-8]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+
+    Fill manual;
+    manual.field_id_      = FieldId{"f1"};
+    manual.current_value_ = "user typed";
+    manual.confidence_    = Confidence::Manual;
+    SourceRef staleRef;
+    staleRef.excerpt_ = "leftover evidence";
+    manual.source_refs_ = {staleRef};
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing, {manual});
+
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"updates", nlohmann::json::array({
+            nlohmann::json{{"field_id","f1"},{"value","ai value"},{"confidence","high"}},
+        })}}));
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    std::atomic<bool> cancelled{false};
+    auto r = svc.refineField(FillSessionId{"s1"}, "override", {}, {}, cancelled);
+
+    REQUIRE(r.has_value());
+    REQUIRE(fillRepo.replaceSourceRefsCalls_.empty());
+    REQUIRE(fillRepo.store_["s1"].fills_[0].source_refs_.size() == 1);
 }
 
 TEST_CASE("[FILL-03] FillSessionService::readSourceText: accepts .odt source",

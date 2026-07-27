@@ -29,6 +29,24 @@ inline std::string fieldTypeToLabel(mondoc::domain::FieldType t) {
     return "Text";
 }
 
+// Shared with the refine prompt (XC-9): both prompts embed the same
+// evidence facts using this exact format so the LLM sees identical framing
+// whether it's assigning a fact to a field (Pass 2) or reconsidering a
+// previously assigned value (refine).
+inline std::string buildFactsSection(const std::vector<ExtractedFact>& facts) {
+    std::string out = "\nExtracted facts (with fact_index):\n";
+    for (std::size_t i = 0; i < facts.size(); ++i) {
+        out += "[" + std::to_string(i) + "] source_index=";
+        out += std::to_string(facts[i].source_index_);
+        out += " summary=\"";
+        out += facts[i].summary_;
+        out += "\" excerpt=\"";
+        out += facts[i].excerpt_;
+        out += "\"\n";
+    }
+    return out;
+}
+
 inline std::string buildPass2UserPrompt(const mondoc::domain::Template& tpl,
                                         const std::vector<ExtractedFact>& facts) {
     std::string out = "Template fields:\n";
@@ -41,16 +59,7 @@ inline std::string buildPass2UserPrompt(const mondoc::domain::Template& tpl,
         out += fieldTypeToLabel(f.type_);
         out += "\"\n";
     }
-    out += "\nExtracted facts (with fact_index):\n";
-    for (std::size_t i = 0; i < facts.size(); ++i) {
-        out += "[" + std::to_string(i) + "] source_index=";
-        out += std::to_string(facts[i].source_index_);
-        out += " summary=\"";
-        out += facts[i].summary_;
-        out += "\" excerpt=\"";
-        out += facts[i].excerpt_;
-        out += "\"\n";
-    }
+    out += buildFactsSection(facts);
     return out;
 }
 

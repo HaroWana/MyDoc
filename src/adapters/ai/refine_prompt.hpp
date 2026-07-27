@@ -21,6 +21,7 @@ inline std::string buildRefineUserPrompt(
         const mondoc::domain::Template& tpl,
         const std::vector<AiFillSourceDoc>& sources,
         const std::vector<mondoc::domain::Fill>& currentFills,
+        const std::vector<ExtractedFact>& lastPass1Facts,
         const std::string& userMessage) {
     std::string out = "Current field values:\n";
     for (const auto& f : tpl.fields_) {
@@ -32,6 +33,7 @@ inline std::string buildRefineUserPrompt(
                "\" type=\"" + fieldTypeToLabel(f.type_) + "\" current=\"" +
                (cur ? *cur : std::string{}) + "\"\n";
     }
+    out += buildFactsSection(lastPass1Facts);
     out += "\nSource documents (for reference):\n";
     for (std::size_t i = 0; i < sources.size(); ++i) {
         out += "--- Source " + std::to_string(i) + ": " +

@@ -24,8 +24,7 @@ struct FormatEntry {
 const FormatEntry kFormats[] = {
     {mondoc::services::ExportFormat::Docx,     "DOCX",       ".docx", "DOCX (*.docx)"},
     {mondoc::services::ExportFormat::Pdf,      "PDF",        ".pdf",  "PDF (*.pdf)"},
-    {mondoc::services::ExportFormat::Text,     "Plain Text", ".txt",  "Plain Text (*.txt)"},
-    {mondoc::services::ExportFormat::Markdown, "Markdown",   ".md",   "Markdown (*.md)"},
+    {mondoc::services::ExportFormat::Text,     "Plain Text", ".txt",  "Text (*.txt *.md)"},
     {mondoc::services::ExportFormat::Odt,      "ODT",        ".odt",  "ODT (*.odt)"},
 };
 

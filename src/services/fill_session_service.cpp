@@ -38,6 +38,16 @@ translateSources(const std::vector<mondoc::services::AiFillSourceInput>& in) {
     return out;
 }
 
+std::vector<mondoc::adapters::ai::ExtractedFact>
+translateFacts(const std::vector<mondoc::services::AiExtractedFact>& in) {
+    std::vector<mondoc::adapters::ai::ExtractedFact> out;
+    out.reserve(in.size());
+    for (const auto& f : in) {
+        out.push_back({f.source_index_, f.char_start_, f.char_end_, f.excerpt_, f.summary_});
+    }
+    return out;
+}
+
 }  // namespace
 
 FillSessionService::FillSessionService(
@@ -137,7 +147,7 @@ FillSessionService::refineField(
         const mondoc::FillSessionId& sessionId,
         const std::string& userMessage,
         const std::vector<AiFillSourceInput>& sources,
-        const std::vector<AiExtractedFact>& /*lastPass1Facts*/,
+        const std::vector<AiExtractedFact>& lastPass1Facts,
         const std::atomic<bool>& cancelled) {
     if (!aiPipeline_) {
         return mondoc::unexpected(
@@ -149,10 +159,11 @@ FillSessionService::refineField(
     if (!tplRes) return mondoc::unexpected(tplRes.error());
 
     mondoc::adapters::ai::RefineInput refineInput;
-    refineInput.tpl_           = &(*tplRes);
-    refineInput.sources_       = translateSources(sources);
-    refineInput.current_fills_ = sessionRes->fills_;
-    refineInput.user_message_  = userMessage;
+    refineInput.tpl_              = &(*tplRes);
+    refineInput.sources_          = translateSources(sources);
+    refineInput.current_fills_    = sessionRes->fills_;
+    refineInput.last_pass1_facts_ = translateFacts(lastPass1Facts);
+    refineInput.user_message_     = userMessage;
 
     auto pipeResult = aiPipeline_->refine(refineInput, &cancelled);
     if (!pipeResult) {
@@ -170,6 +181,12 @@ FillSessionService::refineField(
         auto setConf = sessionRepo_.upsertConfidence(
             sessionId, upd.field_id_, upd.confidence_);
         if (!setConf) return mondoc::unexpected(setConf.error());
+        // DSA-8: refine has no citation model yet, so any refs stored from a
+        // prior aiFill now describe stale evidence for the OLD value. Stale
+        // provenance is worse than none — clear it rather than leave it
+        // pointing at the wrong text.
+        auto clearRefs = sessionRepo_.replaceSourceRefs(sessionId, upd.field_id_, {});
+        if (!clearRefs) return mondoc::unexpected(clearRefs.error());
         out.push_back(upd);
     }
     return out;
@@ -229,8 +246,7 @@ FillSessionService::exportSession(const mondoc::FillSessionId& id,
             writeResult = w.write(*tpl, session->fills_, destPath);
             break;
         }
-        case ExportFormat::Text:
-        case ExportFormat::Markdown: {
+        case ExportFormat::Text: {
             mondoc::adapters::formats::TextDocumentWriter w;
             writeResult = w.write(*tpl, session->fills_, destPath);
             break;
