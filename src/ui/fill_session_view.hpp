@@ -53,7 +53,7 @@ private slots:
     void onAiToggleChanged(int state);
     void onFillWithAiClicked();
     void onAiFinished(std::vector<mondoc::domain::Fill> fills);
-    void onAiFailed(QString message);
+    void onAiFailed(QString message, int errorKind);
     void onAiCancelled();
     void onChatRefinementRequested(QString prompt,
                                    std::vector<mondoc::services::AiExtractedFact> lastFacts);

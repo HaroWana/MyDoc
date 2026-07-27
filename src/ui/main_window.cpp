@@ -726,9 +726,8 @@ void MainWindow::onImportTemplate() {
 
     auto result = service_.importTemplate(qStringToPath(src));
     if (!result) {
-        const std::string msg = result.error().message();
-        if (msg.find("ImportConflict:") != std::string::npos) {
-            const QString name = QString::fromStdString(msg.substr(std::strlen("ImportConflict:")));
+        if (result.error().kind() == mondoc::Error::Kind::Conflict) {
+            const QString name = QString::fromStdString(result.error().message());
             ImportConflictDialog dlg(name, this);
             if (dlg.exec() != QDialog::Accepted) return;
             const bool overwrite = dlg.choice() == ConflictChoice::Overwrite;

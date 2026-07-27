@@ -477,14 +477,14 @@ void FillSessionView::onAiFinished(std::vector<mondoc::domain::Fill> fills) {
     emit statusMessageRequested(QString(), 0);
 }
 
-void FillSessionView::onAiFailed(QString message) {
+void FillSessionView::onAiFailed(QString message, int errorKind) {
     restorePreFillSnapshot();
     fillWithAiBtn_->setText(tr("Fill with AI"));
     aiStatusLabel_->setVisible(false);
     if (chatPane_) chatPane_->setBusy(false);
     emit statusMessageRequested(tr("AI fill failed."), 4000);
 
-    mondoc::Error e = mondoc::Error::generic(message.toStdString());
+    mondoc::Error e{static_cast<mondoc::Error::Kind>(errorKind), message.toStdString()};
     auto kind = mondoc::services::classifyAiFailure(e);
     showAiErrorDialog(kind.value_or(mondoc::services::AiFailureKind::BadResponse), message);
 }

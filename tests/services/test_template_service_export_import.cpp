@@ -133,7 +133,7 @@ TEST_CASE("TemplateService::importTemplate: round-trip preserves name and field 
     REQUIRE(imported->fields_[0].name_ == "placeholder_one");
 }
 
-TEST_CASE("TemplateService::importTemplate: name collision returns ImportConflict error [phase05][services.template_export_import]") {
+TEST_CASE("TemplateService::importTemplate: name collision returns Error::conflict carrying the name [phase05][services.template_export_import]") {
     TempFile src{uniqueTempPath(".txt")};
     { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
 
@@ -148,7 +148,8 @@ TEST_CASE("TemplateService::importTemplate: name collision returns ImportConflic
     // Original still in repo → collision
     auto result = svc.importTemplate(bundle.path);
     REQUIRE_FALSE(result.has_value());
-    REQUIRE(result.error().message().find("ImportConflict:") != std::string::npos);
+    REQUIRE(result.error().kind() == Error::Kind::Conflict);
+    REQUIRE(result.error().message() == "Conflict Test");
 }
 
 TEST_CASE("TemplateService::importTemplate: overwrite=true replaces existing template [phase05][services.template_export_import]") {

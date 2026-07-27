@@ -45,7 +45,8 @@ void AiFillWorker::run() {
         }
     }
     qInfo("AiFillWorker::run failed (%s)", kindName);
-    emit failed(QString::fromStdString(result.error().message()));
+    emit failed(QString::fromStdString(result.error().message()),
+                static_cast<int>(result.error().kind()));
 }
 
 }  // namespace mondoc::ui

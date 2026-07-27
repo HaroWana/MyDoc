@@ -29,7 +29,7 @@ public slots:
 
 signals:
     void finished(std::vector<mondoc::domain::Fill> fills);
-    void failed(QString message);
+    void failed(QString message, int errorKind);
     void cancelled();
 
 private:

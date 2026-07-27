@@ -21,10 +21,10 @@ namespace {
 mondoc::Error llmErrorToError(const mondoc::adapters::ai::LlmError& e) {
     using K = mondoc::adapters::ai::LlmError::Kind;
     switch (e.kind()) {
-        case K::Cancelled:   return mondoc::Error::generic("ai cancelled: " + e.message());
-        case K::Unreachable: return mondoc::Error::generic("ai unreachable: " + e.message());
-        case K::RateLimited: return mondoc::Error::generic("ai rate-limited: " + e.message());
-        case K::BadResponse: return mondoc::Error::generic("ai bad response: " + e.message());
+        case K::Cancelled:   return mondoc::Error::cancelled(e.message());
+        case K::Unreachable: return mondoc::Error::unreachable(e.message());
+        case K::RateLimited: return mondoc::Error::rateLimited(e.message());
+        case K::BadResponse: return mondoc::Error::badResponse(e.message());
     }
     return mondoc::Error::generic("ai unknown error");
 }
@@ -180,12 +180,13 @@ FillSessionService::refineField(
 }
 
 std::optional<AiFailureKind> classifyAiFailure(const mondoc::Error& e) {
-    const auto& m = e.message();
-    if (m.rfind("ai cancelled", 0) == 0)    return AiFailureKind::Cancelled;
-    if (m.rfind("ai unreachable", 0) == 0)  return AiFailureKind::Unreachable;
-    if (m.rfind("ai rate-limited", 0) == 0) return AiFailureKind::RateLimited;
-    if (m.rfind("ai bad response", 0) == 0) return AiFailureKind::BadResponse;
-    return std::nullopt;
+    switch (e.kind()) {
+        case mondoc::Error::Kind::Cancelled:   return AiFailureKind::Cancelled;
+        case mondoc::Error::Kind::Unreachable: return AiFailureKind::Unreachable;
+        case mondoc::Error::Kind::RateLimited: return AiFailureKind::RateLimited;
+        case mondoc::Error::Kind::BadResponse: return AiFailureKind::BadResponse;
+        default: return std::nullopt;
+    }
 }
 
 mondoc::expected<std::vector<mondoc::domain::FillSession>, mondoc::Error>

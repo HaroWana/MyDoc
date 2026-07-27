@@ -104,8 +104,7 @@ TemplateService::importTemplate(const std::filesystem::path& src,
     }
 
     if (conflictId && !overwrite && !importAsCopy) {
-        return mondoc::unexpected(
-            mondoc::Error::generic("ImportConflict:" + tpl.name_));
+        return mondoc::unexpected(mondoc::Error::conflict(tpl.name_));
     }
 
     if (conflictId && overwrite) {

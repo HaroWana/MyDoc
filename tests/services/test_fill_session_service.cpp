@@ -666,6 +666,15 @@ TEST_CASE("FillSessionService::aiFill: LlmError::Unreachable classifies as Unrea
     REQUIRE(classifyAiFailure(r.error()) == AiFailureKind::Unreachable);
 }
 
+TEST_CASE("classifyAiFailure covers all four ai kinds and rejects others",
+          "[services.fill_session][xc-8]") {
+    REQUIRE(classifyAiFailure(mondoc::Error::cancelled("x")) == AiFailureKind::Cancelled);
+    REQUIRE(classifyAiFailure(mondoc::Error::unreachable("x")) == AiFailureKind::Unreachable);
+    REQUIRE(classifyAiFailure(mondoc::Error::rateLimited("x")) == AiFailureKind::RateLimited);
+    REQUIRE(classifyAiFailure(mondoc::Error::badResponse("x")) == AiFailureKind::BadResponse);
+    REQUIRE_FALSE(classifyAiFailure(mondoc::Error::notFound("x")).has_value());
+}
+
 TEST_CASE("FillSessionService::refineField: nullptr pipeline returns InvalidArgument",
           "[services.fill_session][adapters.ai]") {
     FakeFillRepo fillRepo;

@@ -37,8 +37,8 @@ struct AiExtractedFact {
 
 enum class AiFailureKind { Cancelled, Unreachable, RateLimited, BadResponse };
 
-// Inverse of llmErrorToError's message-prefix protocol. Returns nullopt for
-// errors not produced by the AI path (so UI can route only AI failures to
+// Classifies an Error produced by llmErrorToError by kind(). Returns nullopt
+// for errors not produced by the AI path (so UI can route only AI failures to
 // the AI-specific dialog and let other errors fall through).
 std::optional<AiFailureKind> classifyAiFailure(const mondoc::Error& e);
 

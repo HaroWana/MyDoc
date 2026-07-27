@@ -12,12 +12,6 @@
 
 namespace mondoc::services {
 
-// Returned by importTemplate when the bundle's template name collides with an
-// existing template. The UI checks for this and shows ImportConflictDialog.
-struct ImportConflictInfo {
-    std::string conflicting_name;
-};
-
 struct DraftWithText {
     mondoc::domain::Template draft;
     std::string document_text;
@@ -33,8 +27,9 @@ public:
     mondoc::expected<void, mondoc::Error>
     exportTemplate(const mondoc::TemplateId& id, const std::filesystem::path& dest);
 
-    // On name collision returns Error with message prefixed "ImportConflict:".
-    // Call again with overwrite=true to replace, or importAsCopy=true to rename.
+    // On name collision returns Error::conflict(name) where message() is the
+    // conflicting template name. Call again with overwrite=true to replace,
+    // or importAsCopy=true to rename.
     mondoc::expected<mondoc::domain::Template, mondoc::Error>
     importTemplate(const std::filesystem::path& src,
                    bool overwrite = false,
