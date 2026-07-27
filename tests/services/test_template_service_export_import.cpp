@@ -16,6 +16,10 @@
 #include <string>
 #include <vector>
 
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
+
 using mondoc::Error;
 using mondoc::FieldId;
 using mondoc::TemplateId;
@@ -78,6 +82,27 @@ struct TempFile {
     ~TempFile() { std::error_code ec; std::filesystem::remove(path, ec); }
 };
 
+// Fixture data dir for TemplateService's injected dataDir_ (DSA-7).
+struct TempDir {
+    std::filesystem::path path;
+    explicit TempDir(std::filesystem::path p) : path(std::move(p)) {
+        std::filesystem::create_directories(path);
+    }
+    ~TempDir() {
+        std::error_code ec;
+        std::filesystem::permissions(path, std::filesystem::perms::owner_all, ec);
+        std::filesystem::remove_all(path, ec);
+    }
+};
+
+std::filesystem::path uniqueTempDirPath(const std::string& tag) {
+    static std::mt19937_64 rng{std::random_device{}()};
+    auto suffix = std::to_string(rng()) + "_" +
+                  std::to_string(std::chrono::steady_clock::now()
+                                     .time_since_epoch().count());
+    return std::filesystem::temp_directory_path() / (tag + suffix);
+}
+
 Template makeTemplate(const std::string& id, const std::string& name,
                       const std::filesystem::path& src) {
     Template t;
@@ -100,7 +125,8 @@ TEST_CASE("TemplateService::exportTemplate: produces a non-empty .mondoc file [p
     { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
 
     FakeRepository repo;
-    TemplateService svc{repo};
+    TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
+    TemplateService svc{repo, dataDir.path};
     auto t = makeTemplate("t-export", "Export Test", src.path);
     REQUIRE(repo.save(t).has_value());
 
@@ -117,7 +143,8 @@ TEST_CASE("TemplateService::importTemplate: round-trip preserves name and field 
     { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
 
     FakeRepository repo;
-    TemplateService svc{repo};
+    TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
+    TemplateService svc{repo, dataDir.path};
     auto t = makeTemplate("t-rt", "Round-Trip Test", src.path);
     REQUIRE(repo.save(t).has_value());
 
@@ -138,7 +165,8 @@ TEST_CASE("TemplateService::importTemplate: name collision returns Error::confli
     { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
 
     FakeRepository repo;
-    TemplateService svc{repo};
+    TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
+    TemplateService svc{repo, dataDir.path};
     auto t = makeTemplate("t-conflict", "Conflict Test", src.path);
     REQUIRE(repo.save(t).has_value());
 
@@ -157,7 +185,8 @@ TEST_CASE("TemplateService::importTemplate: overwrite=true replaces existing tem
     { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
 
     FakeRepository repo;
-    TemplateService svc{repo};
+    TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
+    TemplateService svc{repo, dataDir.path};
     auto t = makeTemplate("t-overwrite", "Overwrite Test", src.path);
     REQUIRE(repo.save(t).has_value());
 
@@ -180,7 +209,8 @@ TEST_CASE("TemplateService::importTemplate: importAsCopy=true creates renamed co
     { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
 
     FakeRepository repo;
-    TemplateService svc{repo};
+    TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
+    TemplateService svc{repo, dataDir.path};
     auto t = makeTemplate("t-copy", "Copy Test", src.path);
     REQUIRE(repo.save(t).has_value());
 
@@ -201,7 +231,8 @@ TEST_CASE("TemplateService::importTemplate: importAsCopy=true preserves the orig
     { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
 
     FakeRepository repo;
-    TemplateService svc{repo};
+    TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
+    TemplateService svc{repo, dataDir.path};
     auto t = makeTemplate("t-copy-preserve", "Preserve Test", src.path);
     REQUIRE(repo.save(t).has_value());
 
@@ -235,3 +266,59 @@ TEST_CASE("TemplateService::importTemplate: importAsCopy=true preserves the orig
     REQUIRE(foundOriginal);
     REQUIRE(foundCopy);
 }
+
+TEST_CASE("TemplateService::importTemplate: imported source lands under the injected data dir, not temp [services.template_export_import]") {
+    TempFile src{uniqueTempPath(".txt")};
+    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+
+    FakeRepository repo;
+    TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
+    TemplateService svc{repo, dataDir.path};
+    auto t = makeTemplate("t-datadir", "DataDir Test", src.path);
+    REQUIRE(repo.save(t).has_value());
+
+    TempFile bundle{uniqueTempPath(".mondoc")};
+    REQUIRE(svc.exportTemplate(t.id_, bundle.path).has_value());
+    REQUIRE(repo.remove(t.id_).has_value());
+
+    auto imported = svc.importTemplate(bundle.path);
+    REQUIRE(imported.has_value());
+    REQUIRE(std::filesystem::exists(imported->source_path_));
+
+    const std::string importedStr = imported->source_path_.string();
+    const std::string dataDirStr = dataDir.path.string();
+    REQUIRE(importedStr.rfind(dataDirStr, 0) == 0);
+}
+
+#if !defined(_WIN32)
+TEST_CASE("TemplateService::importTemplate: fails cleanly when source extraction fails, no template saved [services.template_export_import]") {
+    if (::geteuid() == 0) {
+        SKIP("running as root: directory permissions are not enforced");
+    }
+
+    TempFile src{uniqueTempPath(".txt")};
+    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+
+    FakeRepository repo;
+    TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_nowrite_")};
+    TemplateService svc{repo, dataDir.path};
+    auto t = makeTemplate("t-nowrite", "NoWrite Test", src.path);
+    REQUIRE(repo.save(t).has_value());
+
+    TempFile bundle{uniqueTempPath(".mondoc")};
+    REQUIRE(svc.exportTemplate(t.id_, bundle.path).has_value());
+    REQUIRE(repo.remove(t.id_).has_value());
+
+    std::filesystem::permissions(dataDir.path, std::filesystem::perms::none);
+
+    auto imported = svc.importTemplate(bundle.path);
+
+    std::filesystem::permissions(dataDir.path, std::filesystem::perms::owner_all);
+
+    REQUIRE_FALSE(imported.has_value());
+
+    auto list = svc.listTemplates();
+    REQUIRE(list.has_value());
+    REQUIRE(list->empty());
+}
+#endif

@@ -29,11 +29,12 @@ static std::unique_ptr<AiFieldDetector> makeDetector(LlmClient* client, const Ll
 namespace mondoc::app {
 
 CompositionRoot::CompositionRoot(mondoc::adapters::storage::SqliteConnection conn,
-                                 mondoc::adapters::ai::LlmConfig llmConfig)
+                                 mondoc::adapters::ai::LlmConfig llmConfig,
+                                 std::filesystem::path dataDir)
     : conn_(std::move(conn)),
       repo_(conn_),
       fill_session_repo_(conn_),
-      service_(repo_),
+      service_(repo_, std::move(dataDir)),
       llm_client_(makeClient(llmConfig)),
       ai_pipeline_(makePipeline(llm_client_.get(), llmConfig)),
       ai_field_detector_(makeDetector(llm_client_.get(), llmConfig)),

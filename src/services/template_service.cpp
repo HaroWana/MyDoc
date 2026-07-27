@@ -4,12 +4,13 @@
 
 #include <zip.h>
 
-#include <array>
+#include <cstdint>
 #include <fstream>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "detail/zip_util.hpp"
 #include "docx_document_reader.hpp"
 #include "mondoc_bundle_reader.hpp"
 #include "mondoc_bundle_writer.hpp"
@@ -20,8 +21,13 @@
 
 namespace mondoc::services {
 
-TemplateService::TemplateService(mondoc::domain::ITemplateRepository& repo) noexcept
-    : repo_(repo) {}
+namespace {
+constexpr std::uint64_t kMaxImportedSourceBytes = 50ULL * 1024 * 1024;
+}  // namespace
+
+TemplateService::TemplateService(mondoc::domain::ITemplateRepository& repo,
+                                 std::filesystem::path dataDir)
+    : repo_(repo), dataDir_(std::move(dataDir)) {}
 
 mondoc::expected<DraftWithText, mondoc::Error>
 TemplateService::extractDraft(const std::filesystem::path& path) {
@@ -146,10 +152,15 @@ TemplateService::importTemplate(const std::filesystem::path& src,
 
     if (!tpl.source_path_.empty()) {
         const std::string entryName = tpl.source_path_.filename().string();
-        const std::filesystem::path dest = std::filesystem::temp_directory_path() /
-            "mondoc_imported" / tpl.id_.value() / entryName;
+        const std::filesystem::path destDir = dataDir_ / "imported" / tpl.id_.value();
+        const std::filesystem::path dest = destDir / entryName;
+
         std::error_code ec;
-        std::filesystem::create_directories(dest.parent_path(), ec);
+        std::filesystem::create_directories(destDir, ec);
+        if (ec) {
+            return mondoc::unexpected(mondoc::Error::generic(
+                "cannot create import directory: " + ec.message()));
+        }
 
         int zipErr = 0;
         const std::string zipPath = pathToUtf8(src);
@@ -158,22 +169,28 @@ TemplateService::importTemplate(const std::filesystem::path& src,
             return mondoc::unexpected(mondoc::Error::generic(
                 "cannot open bundle for extraction: " + entryName));
         }
-        zip_file_t* zf = zip_fopen(za, entryName.c_str(), 0);
-        if (zf) {
-            std::ofstream out(dest, std::ios::binary);
-            std::array<char, 4096> buf{};
-            zip_int64_t nread = 0;
-            while ((nread = zip_fread(zf, buf.data(), buf.size())) > 0) {
-                out.write(buf.data(), nread);
-            }
-            zip_fclose(zf);
-            tpl.source_path_ = dest;
-        } else {
-            zip_close(za);
-            return mondoc::unexpected(mondoc::Error::generic(
-                "cannot extract source document from bundle: " + entryName));
-        }
+
+        auto entryData = mondoc::adapters::formats::detail::readZipEntry(
+            za, entryName.c_str(), kMaxImportedSourceBytes);
         zip_close(za);
+        if (!entryData) {
+            return mondoc::unexpected(entryData.error());
+        }
+
+        std::ofstream out(dest, std::ios::binary);
+        if (out) {
+            out.write(entryData->data(),
+                      static_cast<std::streamsize>(entryData->size()));
+            out.close();
+        }
+        if (!out) {
+            std::error_code rmEc;
+            std::filesystem::remove(dest, rmEc);
+            return mondoc::unexpected(mondoc::Error::generic(
+                "cannot write extracted source document: " + entryName));
+        }
+
+        tpl.source_path_ = dest;
     }
 
     auto saved = repo_.save(tpl);
@@ -200,6 +217,17 @@ TemplateService::renameTemplate(const mondoc::TemplateId& id,
     if (!found) {
         return mondoc::unexpected(found.error());
     }
+
+    auto all = repo_.listAll();
+    if (!all) {
+        return mondoc::unexpected(all.error());
+    }
+    for (const auto& existing : *all) {
+        if (existing.id_.value() != id.value() && existing.name_ == newName) {
+            return mondoc::unexpected(mondoc::Error::conflict(newName));
+        }
+    }
+
     found->name_ = newName;
     return repo_.save(*found);
 }
@@ -211,6 +239,17 @@ TemplateService::duplicateTemplate(const mondoc::TemplateId& id,
     if (!found) {
         return mondoc::unexpected(found.error());
     }
+
+    auto all = repo_.listAll();
+    if (!all) {
+        return mondoc::unexpected(all.error());
+    }
+    for (const auto& existing : *all) {
+        if (existing.name_ == newName) {
+            return mondoc::unexpected(mondoc::Error::conflict(newName));
+        }
+    }
+
     mondoc::domain::Template copy = *found;
     copy.id_   = mondoc::TemplateId{generateUuid()};
     copy.name_ = newName;

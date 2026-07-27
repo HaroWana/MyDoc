@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <memory>
 #include <utility>
 
@@ -17,7 +18,8 @@ namespace mondoc::app {
 
 struct CompositionRoot {
     CompositionRoot(mondoc::adapters::storage::SqliteConnection conn,
-                    mondoc::adapters::ai::LlmConfig llmConfig);
+                    mondoc::adapters::ai::LlmConfig llmConfig,
+                    std::filesystem::path dataDir);
 
     // Callers must not invoke reconfigureLlm() while an AI fill is in progress —
     // it destroys the pipeline a running fill may still reference. Plan 05-07

@@ -66,7 +66,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    mondoc::app::CompositionRoot root{std::move(*connResult), std::move(*cfgResult)};
+    mondoc::app::CompositionRoot root{std::move(*connResult), std::move(*cfgResult),
+                                      appDataDir};
     mondoc::ui::MainWindow window{root.service_,
                                   root.fill_session_service_,
                                   root.repo_,

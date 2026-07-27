@@ -19,7 +19,8 @@ struct DraftWithText {
 
 class TemplateService {
 public:
-    explicit TemplateService(mondoc::domain::ITemplateRepository& repo) noexcept;
+    TemplateService(mondoc::domain::ITemplateRepository& repo,
+                    std::filesystem::path dataDir);
 
     mondoc::expected<DraftWithText, mondoc::Error>
     extractDraft(const std::filesystem::path& path);
@@ -52,6 +53,7 @@ public:
 
 private:
     mondoc::domain::ITemplateRepository& repo_;
+    std::filesystem::path dataDir_;
 };
 
 }  // namespace mondoc::services

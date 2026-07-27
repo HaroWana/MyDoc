@@ -90,7 +90,6 @@ std::string buildManifest(const mondoc::domain::Template& tpl,
     nlohmann::json fields = nlohmann::json::array();
     for (const auto& f : tpl.fields_) {
         fields.push_back({
-            {"id", f.id_.value()},
             {"name", f.name_},
             {"type", fieldTypeToStr(f.type_)},
             {"origin", fieldOriginToStr(f.origin_)},

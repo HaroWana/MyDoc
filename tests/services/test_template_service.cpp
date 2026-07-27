@@ -118,7 +118,7 @@ Field makeField(const std::string& id, const std::string& name, FieldType type) 
 TEST_CASE("TemplateService: extractDraft returns error for unsupported extension",
           "[services.template_service]") {
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     auto result = svc.extractDraft(std::filesystem::path{"diagram.png"});
 
@@ -132,7 +132,7 @@ TEST_CASE("TemplateService: extractDraft reads a .txt file and returns Template 
     writeFile(tmp.path, "Hello {{field_one}}!");
 
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     auto result = svc.extractDraft(tmp.path);
 
@@ -144,7 +144,7 @@ TEST_CASE("TemplateService: extractDraft reads a .txt file and returns Template 
 TEST_CASE("TemplateService: saveTemplate persists to repository",
           "[services.template_service]") {
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     Template t = makeTemplate("t-1", "First");
 
@@ -160,7 +160,7 @@ TEST_CASE("TemplateService: saveTemplate persists to repository",
 TEST_CASE("TemplateService: listTemplates returns empty when no templates",
           "[services.template_service]") {
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     auto list = svc.listTemplates();
 
@@ -171,7 +171,7 @@ TEST_CASE("TemplateService: listTemplates returns empty when no templates",
 TEST_CASE("TemplateService: listTemplates returns saved templates",
           "[services.template_service]") {
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     Template a = makeTemplate("t-a", "Alpha");
     Template b = makeTemplate("t-b", "Beta");
@@ -187,7 +187,7 @@ TEST_CASE("TemplateService: listTemplates returns saved templates",
 TEST_CASE("TemplateService: deleteTemplate removes the template",
           "[services.template_service]") {
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     Template t = makeTemplate("t-1", "Doomed");
     REQUIRE(svc.saveTemplate(t).has_value());
@@ -203,7 +203,7 @@ TEST_CASE("TemplateService: deleteTemplate removes the template",
 TEST_CASE("TemplateService: deleteTemplate returns not-found for unknown id",
           "[services.template_service]") {
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     auto result = svc.deleteTemplate(TemplateId{"missing"});
 
@@ -214,7 +214,7 @@ TEST_CASE("TemplateService: deleteTemplate returns not-found for unknown id",
 TEST_CASE("TemplateService: renameTemplate updates the name",
           "[services.template_service]") {
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     Template t = makeTemplate("t-1", "Old");
     REQUIRE(svc.saveTemplate(t).has_value());
@@ -230,7 +230,7 @@ TEST_CASE("TemplateService: renameTemplate updates the name",
 TEST_CASE("TemplateService: renameTemplate returns not-found for unknown id",
           "[services.template_service]") {
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     auto result = svc.renameTemplate(TemplateId{"missing"}, "Whatever");
 
@@ -238,10 +238,31 @@ TEST_CASE("TemplateService: renameTemplate returns not-found for unknown id",
     REQUIRE(result.error().kind() == Error::Kind::NotFound);
 }
 
+TEST_CASE("TemplateService: renameTemplate rejects a name that collides with an existing template",
+          "[services.template_service]") {
+    FakeRepository repo;
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
+
+    Template a = makeTemplate("t-a", "Alpha");
+    Template b = makeTemplate("t-b", "Beta");
+    REQUIRE(svc.saveTemplate(a).has_value());
+    REQUIRE(svc.saveTemplate(b).has_value());
+
+    auto result = svc.renameTemplate(b.id_, "Alpha");
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == Error::Kind::Conflict);
+    REQUIRE(result.error().message() == "Alpha");
+
+    auto reloaded = repo.findById(b.id_);
+    REQUIRE(reloaded.has_value());
+    REQUIRE(reloaded->name_ == "Beta");
+}
+
 TEST_CASE("TemplateService: duplicateTemplate creates new template with new id",
           "[services.template_service]") {
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     Template t = makeTemplate("t-1", "Original");
     t.fields_.push_back(makeField("f-1", "field_one", FieldType::Text));
@@ -270,10 +291,31 @@ TEST_CASE("TemplateService: duplicateTemplate creates new template with new id",
 TEST_CASE("TemplateService: duplicateTemplate returns not-found for unknown source id",
           "[services.template_service]") {
     FakeRepository repo;
-    TemplateService svc{repo};
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
 
     auto result = svc.duplicateTemplate(TemplateId{"missing"}, "X");
 
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().kind() == Error::Kind::NotFound);
+}
+
+TEST_CASE("TemplateService: duplicateTemplate rejects a name that collides with an existing template",
+          "[services.template_service]") {
+    FakeRepository repo;
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
+
+    Template a = makeTemplate("t-a", "Alpha");
+    Template b = makeTemplate("t-b", "Beta");
+    REQUIRE(svc.saveTemplate(a).has_value());
+    REQUIRE(svc.saveTemplate(b).has_value());
+
+    auto result = svc.duplicateTemplate(a.id_, "Beta");
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == Error::Kind::Conflict);
+    REQUIRE(result.error().message() == "Beta");
+
+    auto list = svc.listTemplates();
+    REQUIRE(list.has_value());
+    REQUIRE(list->size() == 2);
 }
