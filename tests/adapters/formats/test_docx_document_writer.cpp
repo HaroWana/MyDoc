@@ -90,6 +90,41 @@ using mondoc::tests_support::TempFile;
 
 }  // namespace
 
+TEST_CASE("[TST-15] DocxDocumentWriter: rejects empty source_path_ with invalidArgument",
+          "[formats.docx_writer][tst-15]") {
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"empty-src"};
+    tpl.name_          = "test";
+    tpl.source_format_ = "docx";
+
+    TempFile destFile{uniqueTempPath("out")};
+    DocxDocumentWriter writer;
+    auto result = writer.write(tpl, {}, destFile.path);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == mondoc::Error::Kind::InvalidArgument);
+}
+
+TEST_CASE("[TST-15] DocxDocumentWriter: rejects a corrupt (non-zip) template file",
+          "[formats.docx_writer][tst-15]") {
+    TempFile templateFile{uniqueTempPath("tpl")};
+    {
+        std::ofstream out(templateFile.path, std::ios::binary);
+        out << "not a zip file at all";
+    }
+
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"corrupt-src"};
+    tpl.name_          = "test";
+    tpl.source_format_ = "docx";
+    tpl.source_path_   = templateFile.path;
+
+    TempFile destFile{uniqueTempPath("out")};
+    DocxDocumentWriter writer;
+    auto result = writer.write(tpl, {}, destFile.path);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == mondoc::Error::Kind::Generic);
+}
+
 TEST_CASE("DocxDocumentWriter: original template is byte-identical after a successful write",
           "[formats.docx_writer]") {
     TempFile templateFile{uniqueTempPath("tpl")};

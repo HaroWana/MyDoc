@@ -129,6 +129,34 @@ TEST_CASE("LlmClient::chat: 500 from real server -> BadResponse (APP-06)",
     REQUIRE(result.error().message().find("internal error") != std::string::npos);
 }
 
+TEST_CASE("[TST-14] LlmClient::chat: 200 OK returns the response body verbatim",
+          "[adapters.ai][llm_client][tst-14]") {
+    httplib::Server svr;
+    svr.Post("/v1/chat/completions",
+             [](const httplib::Request&, httplib::Response& res) {
+                 res.status = 200;
+                 res.set_content(R"({"choices":[{"message":{"content":"hi"}}]})",
+                                 "application/json");
+             });
+
+    int port = svr.bind_to_any_port("127.0.0.1");
+    if (port <= 0) {
+        SKIP("could not bind test server");
+    }
+    std::thread t([&] { svr.listen_after_bind(); });
+    while (!svr.is_running()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    auto client = LlmClient::create("http://127.0.0.1:" + std::to_string(port), "k").value();
+    auto result = client->chat("{}");
+    svr.stop();
+    t.join();
+
+    REQUIRE(result.has_value());
+    REQUIRE(*result == R"({"choices":[{"message":{"content":"hi"}}]})");
+}
+
 TEST_CASE("LlmClient::chat: cancellation flag aborts an in-flight body read (SAI-2)",
           "[adapters.ai][llm_client][app06]") {
     httplib::Server svr;

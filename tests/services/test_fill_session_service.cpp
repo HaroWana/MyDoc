@@ -3,9 +3,14 @@
 #include <atomic>
 #include <filesystem>
 #include <map>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
+
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 
 #include <nlohmann/json.hpp>
 
@@ -465,6 +470,143 @@ TEST_CASE("FillSessionService: exportSession Text format dispatches to TextDocum
     REQUIRE(fillRepo.store_["s1"].status_ == FillStatus::Exported);
 }
 
+TEST_CASE("[TST-9] FillSessionService: exportSession dispatches Docx format",
+          "[services.fill_session][tst-9]") {
+    TempFile srcFile{uniqueTempPath(".docx")};
+    constexpr std::string_view documentXml = R"XML(<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body><w:p><w:r><w:t>Hello {{name}}</w:t></w:r></w:p></w:body>
+</w:document>)XML";
+    mondoc::tests_support::writeMinimalDocx(srcFile.path, documentXml);
+
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Field f;
+    f.id_   = FieldId{"fname"};
+    f.name_ = "name";
+    f.type_ = FieldType::Text;
+    Template t = makeTpl(srcFile.path, {f}, "docx");
+    REQUIRE(tplRepo.save(t).has_value());
+
+    Fill fill;
+    fill.field_id_      = FieldId{"fname"};
+    fill.current_value_ = "World";
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing, {fill});
+
+    TempFile dst{uniqueTempPath(".docx")};
+    FillSessionService svc{fillRepo, tplRepo};
+    auto r = svc.exportSession(FillSessionId{"s1"}, ExportFormat::Docx, dst.path);
+
+    REQUIRE(r.has_value());
+    REQUIRE(std::filesystem::exists(dst.path));
+    REQUIRE(fillRepo.store_["s1"].status_ == FillStatus::Exported);
+}
+
+TEST_CASE("[TST-9] FillSessionService: exportSession dispatches Odt format",
+          "[services.fill_session][tst-9]") {
+    TempFile srcFile{uniqueTempPath(".odt")};
+    constexpr std::string_view contentXml = R"XML(<?xml version="1.0"?>
+<office:document-content
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:text>
+    <text:p>Hello {{name}}</text:p>
+  </office:text></office:body>
+</office:document-content>)XML";
+    mondoc::tests_support::writeMinimalOdt(srcFile.path, contentXml);
+
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Field f;
+    f.id_   = FieldId{"fname"};
+    f.name_ = "name";
+    f.type_ = FieldType::Text;
+    Template t = makeTpl(srcFile.path, {f}, "odt");
+    REQUIRE(tplRepo.save(t).has_value());
+
+    Fill fill;
+    fill.field_id_      = FieldId{"fname"};
+    fill.current_value_ = "World";
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing, {fill});
+
+    TempFile dst{uniqueTempPath(".odt")};
+    FillSessionService svc{fillRepo, tplRepo};
+    auto r = svc.exportSession(FillSessionId{"s1"}, ExportFormat::Odt, dst.path);
+
+    REQUIRE(r.has_value());
+    REQUIRE(std::filesystem::exists(dst.path));
+    REQUIRE(fillRepo.store_["s1"].status_ == FillStatus::Exported);
+}
+
+TEST_CASE("[TST-9] FillSessionService: exportSession dispatches Pdf format",
+          "[services.fill_session][tst-9]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Field f;
+    f.id_   = FieldId{"fname"};
+    f.name_ = "name";
+    f.type_ = FieldType::Text;
+    // PdfDocumentWriter generates a fresh document; no source_path_ needed.
+    Template t = makeTpl({}, {f}, "pdf");
+    REQUIRE(tplRepo.save(t).has_value());
+
+    Fill fill;
+    fill.field_id_      = FieldId{"fname"};
+    fill.current_value_ = "World";
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing, {fill});
+
+    TempFile dst{uniqueTempPath(".pdf")};
+    FillSessionService svc{fillRepo, tplRepo};
+    auto r = svc.exportSession(FillSessionId{"s1"}, ExportFormat::Pdf, dst.path);
+
+    REQUIRE(r.has_value());
+    REQUIRE(std::filesystem::exists(dst.path));
+    REQUIRE(fillRepo.store_["s1"].status_ == FillStatus::Exported);
+}
+
+#if !defined(_WIN32)
+TEST_CASE("[TST-9] FillSessionService: exportSession to an unwritable path "
+          "errors and leaves status at Reviewing",
+          "[services.fill_session][tst-9]") {
+    if (::geteuid() == 0) {
+        SKIP("running as root: directory permissions are not enforced");
+    }
+
+    TempFile srcFile{uniqueTempPath(".txt")};
+    writeFile(srcFile.path, "Hello {{name}}!");
+
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Field f;
+    f.id_   = FieldId{"fname"};
+    f.name_ = "name";
+    f.type_ = FieldType::Text;
+    Template t = makeTpl(srcFile.path, {f}, "txt");
+    REQUIRE(tplRepo.save(t).has_value());
+
+    Fill fill;
+    fill.field_id_      = FieldId{"fname"};
+    fill.current_value_ = "World";
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing, {fill});
+
+    auto parentDir = std::filesystem::temp_directory_path() /
+        ("mondoc_test_fillsvc_export_nowrite_" +
+         std::to_string(std::mt19937_64{std::random_device{}()}()));
+    std::filesystem::create_directory(parentDir);
+    auto destPath = parentDir / "out.txt";
+    std::filesystem::permissions(parentDir, std::filesystem::perms::none);
+
+    FillSessionService svc{fillRepo, tplRepo};
+    auto r = svc.exportSession(FillSessionId{"s1"}, ExportFormat::Text, destPath);
+
+    std::filesystem::permissions(parentDir, std::filesystem::perms::owner_all);
+    std::filesystem::remove_all(parentDir);
+
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(fillRepo.store_["s1"].status_ == FillStatus::Reviewing);
+}
+#endif
+
 TEST_CASE("FillSessionService: readSourceText returns body for .txt",
           "[services.fill_session]") {
     TempFile src{uniqueTempPath(".txt")};
@@ -598,6 +740,48 @@ TEST_CASE("FillSessionService::aiFill: happy path persists Fills and returns the
     REQUIRE(valueOf("f1") == "John");
     REQUIRE(valueOf("f2") == "1985-03-12");
     REQUIRE(valueOf("f3") == "95");
+}
+
+TEST_CASE("[TST-18] FillSessionService::aiFill: non-empty source text and free-form "
+          "text both land in the Pass-1 request body",
+          "[services.fill_session][adapters.ai][tst-18]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+    Template t = aiThreeFieldTpl();
+    REQUIRE(tplRepo.save(t).has_value());
+    fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing);
+
+    FakeLlmClient fake;
+    fake.enqueueOk(canonicalPass1());
+    fake.enqueueOk(canonicalPass2());
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService svc{fillRepo, tplRepo, &pipe};
+
+    std::vector<AiFillSourceInput> sources{
+        AiFillSourceInput{mondoc::SourceDocId{"src-a"}, "report.txt", "SOURCE_TEXT_MARKER"},
+    };
+    std::atomic<bool> cancelled{false};
+    auto r = svc.aiFill(FillSessionId{"s1"}, sources, "FREE_FORM_TEXT_MARKER", cancelled);
+
+    REQUIRE(r.has_value());
+    REQUIRE_FALSE(fake.chatCalls_.empty());
+    REQUIRE(fake.chatCalls_[0].find("SOURCE_TEXT_MARKER") != std::string::npos);
+    REQUIRE(fake.chatCalls_[0].find("FREE_FORM_TEXT_MARKER") != std::string::npos);
+}
+
+TEST_CASE("[TST-18] FillSessionService::isAiConfigured reflects whether a pipeline "
+          "was injected",
+          "[services.fill_session][adapters.ai][tst-18]") {
+    FakeFillRepo fillRepo;
+    FakeTemplateRepo tplRepo;
+
+    FillSessionService withoutPipeline{fillRepo, tplRepo};
+    REQUIRE_FALSE(withoutPipeline.isAiConfigured());
+
+    FakeLlmClient fake;
+    AiFillPipeline pipe{fake, minimalConfig()};
+    FillSessionService withPipeline{fillRepo, tplRepo, &pipe};
+    REQUIRE(withPipeline.isAiConfigured());
 }
 
 TEST_CASE("FillSessionService::aiFill: manual-sticky fill is preserved (REVW-05)",

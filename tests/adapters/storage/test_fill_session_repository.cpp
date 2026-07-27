@@ -490,3 +490,17 @@ TEST_CASE("remove cascades to fill_source_refs",
     REQUIRE(q.executeStep());
     REQUIRE(q.getColumn(0).getInt() == 0);
 }
+
+TEST_CASE("[TST-12] SqliteFillSessionRepository: save fails with a storage error "
+          "when template_id violates the foreign key",
+          "[adapters.storage][fill_session_repo][tst-12]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+
+    auto s = makeSession("s1");
+    s.template_id_ = TemplateId{"does-not-exist"};
+
+    auto result = repo.save(s);
+    REQUIRE_FALSE(result.has_value());
+}

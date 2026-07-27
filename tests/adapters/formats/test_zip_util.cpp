@@ -4,6 +4,7 @@
 
 #include <zip.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -40,6 +41,30 @@ TEST_CASE("readZipEntry reads full entry and enforces cap", "[formats.zip_util]"
 
     auto rejected = readZipEntry(za, "big.txt", 1024);
     REQUIRE_FALSE(rejected.has_value());
+
+    zip_discard(za);
+}
+
+TEST_CASE("[TST-11] readZipEntry rejects a zip-bomb entry before reading its content",
+          "[formats.zip_util][tst-11]") {
+    TempFile tmp{uniqueTempZipPath()};
+    constexpr std::uint64_t kMaxBytes = 50ULL * 1024 * 1024;
+    // Highly compressible (single repeated byte) so DEFLATE shrinks it to a
+    // tiny archive on disk, while the entry still declares > 50 MB
+    // uncompressed — the actual "zip bomb" shape this guard exists for.
+    const std::string bomb(static_cast<std::size_t>(kMaxBytes) + 1024, 'a');
+
+    writeZipEntries(tmp.path, {{"bomb.txt", bomb}});
+
+    REQUIRE(std::filesystem::file_size(tmp.path) < 1024ULL * 1024);
+
+    int err = 0;
+    zip_t* za = zip_open(tmp.path.string().c_str(), ZIP_RDONLY, &err);
+    REQUIRE(za != nullptr);
+
+    auto result = readZipEntry(za, "bomb.txt", kMaxBytes);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().message().find("exceeds size limit") != std::string::npos);
 
     zip_discard(za);
 }

@@ -1,7 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "pdf_document_reader.hpp"
+#include "domain/field.hpp"
+#include "domain/template.hpp"
 #include "mondoc/error.hpp"
+
+#include <podofo/podofo.h>
 
 #include <filesystem>
 #include <string>
@@ -52,12 +56,45 @@ TEST_CASE("PdfDocumentReader: rejects file larger than 50MB",
     REQUIRE(result.error().message().find("too large") != std::string::npos);
 }
 
-TEST_CASE("[TMPL-06] PdfDocumentReader: extracts AcroForm TextBox field",
-          "[formats.pdf_reader]") {
-    SKIP("requires real .pdf fixture with AcroForm fields");
+TEST_CASE("[TMPL-06][TST-3] PdfDocumentReader: extracts AcroForm TextBox field",
+          "[formats.pdf_reader][tst-3]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    {
+        PoDoFo::PdfMemDocument doc;
+        auto& page = doc.GetPages().CreatePage(
+            PoDoFo::PdfPage::CreateStandardPageSize(PoDoFo::PdfPageSize::A4));
+        PoDoFo::Rect rect(50, 700, 200, 20);
+        page.CreateField<PoDoFo::PdfTextBox>("customer_name", rect);
+        doc.Save(tmp.path.string());
+    }
+
+    PdfDocumentReader reader;
+    auto result = reader.read(tmp.path);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->fields_.size() == 1);
+    REQUIRE(result->fields_[0].name_ == "customer_name");
+    REQUIRE(result->fields_[0].type_ == mondoc::domain::FieldType::Text);
+    REQUIRE(result->fields_[0].origin_ == mondoc::domain::FieldOrigin::FormControl);
 }
 
-TEST_CASE("[TMPL-06] PdfDocumentReader: rejects XFA-only PDF with actionable error",
-          "[formats.pdf_reader]") {
-    SKIP("requires real XFA-only .pdf fixture");
+TEST_CASE("[TMPL-06][TST-3] PdfDocumentReader: rejects XFA-only PDF with actionable error",
+          "[formats.pdf_reader][tst-3]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    {
+        PoDoFo::PdfMemDocument doc;
+        doc.GetPages().CreatePage(
+            PoDoFo::PdfPage::CreateStandardPageSize(PoDoFo::PdfPageSize::A4));
+        auto& acroForm = doc.GetOrCreateAcroForm();
+        // No regular AcroForm fields — only the XFA key, mirroring a
+        // hybrid/XFA-only form exported by tools like Adobe LiveCycle.
+        acroForm.GetDictionary().AddKey("XFA", PoDoFo::PdfString("dummy-xfa-stream"));
+        doc.Save(tmp.path.string());
+    }
+
+    PdfDocumentReader reader;
+    auto result = reader.read(tmp.path);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().message().find("XFA") != std::string::npos);
 }

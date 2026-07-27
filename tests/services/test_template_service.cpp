@@ -8,11 +8,13 @@
 #include "mondoc/id.hpp"
 
 #include "support/temp_files.hpp"
+#include "support/zip_fixtures.hpp"
 
 #include <algorithm>
 #include <filesystem>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using mondoc::Error;
@@ -117,6 +119,84 @@ TEST_CASE("TemplateService: extractDraft reads a .txt file and returns Template 
     REQUIRE(result.has_value());
     REQUIRE(result->draft.fields_.size() == 1);
     REQUIRE(result->draft.fields_[0].name_ == "field_one");
+}
+
+TEST_CASE("[TST-17] TemplateService: extractDraft dispatches .docx to DocxDocumentReader",
+          "[services.template_service][tst-17]") {
+    TempFile tmp{uniqueTempPath(".docx")};
+    constexpr std::string_view documentXml = R"XML(<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body><w:p><w:r><w:t>Hello {{field_one}}!</w:t></w:r></w:p></w:body>
+</w:document>)XML";
+    mondoc::tests_support::writeMinimalDocx(tmp.path, documentXml);
+
+    FakeRepository repo;
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
+
+    auto result = svc.extractDraft(tmp.path);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->draft.fields_.size() == 1);
+    REQUIRE(result->draft.fields_[0].name_ == "field_one");
+}
+
+TEST_CASE("[TST-17] TemplateService: extractDraft dispatches .odt to OdtDocumentReader",
+          "[services.template_service][tst-17]") {
+    TempFile tmp{uniqueTempPath(".odt")};
+    constexpr std::string_view contentXml = R"XML(<?xml version="1.0"?>
+<office:document-content
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:text>
+    <text:p>Hello {{field_one}}!</text:p>
+  </office:text></office:body>
+</office:document-content>)XML";
+    mondoc::tests_support::writeMinimalOdt(tmp.path, contentXml);
+
+    FakeRepository repo;
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
+
+    auto result = svc.extractDraft(tmp.path);
+
+    REQUIRE(result.has_value());
+    auto& fields = result->draft.fields_;
+    bool found = false;
+    for (const auto& f : fields) {
+        if (f.name_ == "field_one") found = true;
+    }
+    REQUIRE(found);
+}
+
+TEST_CASE("[TST-17] TemplateService: extractDraft dispatches .pdf to PdfDocumentReader",
+          "[services.template_service][tst-17]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    writeFile(tmp.path, "not a valid PDF");
+
+    FakeRepository repo;
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
+
+    auto result = svc.extractDraft(tmp.path);
+
+    // Dispatch reaches PdfDocumentReader (not the "Unsupported format"
+    // invalidArgument path); a corrupt PDF surfaces as a generic error.
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() != Error::Kind::InvalidArgument);
+}
+
+TEST_CASE("[TST-17] TemplateService: extractDraft on an empty source file "
+          "returns a draft with empty document_text",
+          "[services.template_service][tst-17]") {
+    TempFile tmp{uniqueTempPath(".txt")};
+    writeFile(tmp.path, "");
+
+    FakeRepository repo;
+    TemplateService svc{repo, std::filesystem::temp_directory_path()};
+
+    auto result = svc.extractDraft(tmp.path);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->draft.fields_.empty());
+    REQUIRE(result->document_text.empty());
 }
 
 TEST_CASE("TemplateService: saveTemplate persists to repository",

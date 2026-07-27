@@ -102,6 +102,55 @@ TEST_CASE("run: Pass 1 + Pass 2 fills every template field with confidence",
     REQUIRE(fake.chatCalls_.size() == 2);
 }
 
+TEST_CASE("[TST-7] run: populates source_refs_ with source id, range, and excerpt; "
+          "an out-of-range fact_index yields no ref",
+          "[adapters.ai][pipeline][tst-7]") {
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"facts", nlohmann::json::array({
+            nlohmann::json{{"source_index", 0}, {"char_start", 0}, {"char_end", 8},
+                           {"excerpt", "John Doe"}, {"summary", "name"}},
+        })}
+    }));
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"fills", nlohmann::json::array({
+            nlohmann::json{{"field_id","f1"},{"value","John Doe"},
+                           {"confidence","high"},{"fact_index",0}},
+            nlohmann::json{{"field_id","f2"},{"value","1985-3-12"},
+                           {"confidence","medium"},{"fact_index",99}},
+            nlohmann::json{{"field_id","f3"},{"value","95 points"},
+                           {"confidence","low"},{"fact_index",-1}},
+        })}
+    }));
+
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RunInput in;
+    in.tpl_ = &tpl;
+    in.sources_ = oneSource();
+
+    std::atomic<bool> cancelled{false};
+    auto result = pipe.run(in, cancelled);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->size() == 3);
+
+    const auto& f1 = (*result)[0];
+    REQUIRE(f1.source_refs_.size() == 1);
+    REQUIRE(f1.source_refs_[0].source_id_.value() == "src-0");
+    REQUIRE(f1.source_refs_[0].range_.begin_ == 0);
+    REQUIRE(f1.source_refs_[0].range_.end_ == 8);
+    REQUIRE(f1.source_refs_[0].excerpt_ == "John Doe");
+
+    // fact_index 99 is out of range for a one-fact response — no ref appended.
+    const auto& f2 = (*result)[1];
+    REQUIRE(f2.source_refs_.empty());
+
+    // fact_index -1 means "no fact cited" — also no ref.
+    const auto& f3 = (*result)[2];
+    REQUIRE(f3.source_refs_.empty());
+}
+
 TEST_CASE("run: cancel flag set between passes returns LlmError::Cancelled",
           "[adapters.ai][pipeline][revw-08]") {
     FakeLlmClient fake;
@@ -241,6 +290,42 @@ TEST_CASE("run: Pass 2 non-string field_id/value returns BadResponse without cra
 
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().kind() == LlmError::Kind::BadResponse);
+}
+
+TEST_CASE("[TST-8] run: Pass 2 non-JSON content returns BadResponse",
+          "[adapters.ai][pipeline][tst-8]") {
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{{"facts", nlohmann::json::array()}}));
+    fake.enqueueOk(makeChatCompletion(std::string{"not json {"}));
+
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RunInput in;
+    in.tpl_ = &tpl;
+    in.sources_ = oneSource();
+    std::atomic<bool> cancelled{false};
+
+    auto result = pipe.run(in, cancelled);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::BadResponse);
+}
+
+TEST_CASE("[TST-8] run: default-constructed RunInput (no template) is rejected "
+          "without any chat call",
+          "[adapters.ai][pipeline][tst-8]") {
+    FakeLlmClient fake;
+    AiFillPipeline pipe(fake, minimalConfig());
+    RunInput in;  // tpl_ == nullptr
+    std::atomic<bool> cancelled{false};
+
+    auto result = pipe.run(in, cancelled);
+
+    REQUIRE_FALSE(result.has_value());
+    // AiFillPipeline::run only distinguishes LlmError kinds (no InvalidArgument
+    // variant exists at this layer); a missing template surfaces as BadResponse.
+    REQUIRE(result.error().kind() == LlmError::Kind::BadResponse);
+    REQUIRE(fake.chatCalls_.empty());
 }
 
 TEST_CASE("run: cancel flag set after Pass 2 chat() returns yields Cancelled",

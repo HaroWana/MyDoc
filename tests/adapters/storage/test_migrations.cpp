@@ -97,6 +97,13 @@ TEST_CASE("runMigrations: templates table exists after v1", "[storage]") {
     REQUIRE(q.getColumn(0).getString() == "templates");
 }
 
+TEST_CASE("[TST-12] SqliteConnection::open: nonexistent parent directory returns an error",
+          "[storage][tst-12]") {
+    auto conn = SqliteConnection::open(
+        std::filesystem::path{"/nonexistent/dir/db.sqlite"});
+    REQUIRE_FALSE(conn.has_value());
+}
+
 TEST_CASE("SqliteConnection: opens a unicode path", "[storage]") {
     auto dir = std::filesystem::temp_directory_path();
     auto path = dir / std::filesystem::path(std::u8string{u8"é-mondoc-test.db"});

@@ -89,6 +89,27 @@ TEST_CASE("OdtDocumentWriter: rejects empty source_path_ with invalidArgument",
     REQUIRE(result.error().kind() == mondoc::Error::Kind::InvalidArgument);
 }
 
+TEST_CASE("[TST-15] OdtDocumentWriter: rejects a corrupt (non-zip) template file",
+          "[formats.odt_writer][tst-15]") {
+    TempFile srcTmp{uniqueTempPath(".odt")};
+    {
+        std::ofstream out(srcTmp.path, std::ios::binary);
+        out << "not a zip file at all";
+    }
+
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"corrupt-src"};
+    tpl.name_          = "test";
+    tpl.source_format_ = "odt";
+    tpl.source_path_   = srcTmp.path;
+
+    TempFile destTmp{uniqueTempPath(".odt")};
+    OdtDocumentWriter writer;
+    auto result = writer.write(tpl, {}, destTmp.path);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == mondoc::Error::Kind::Generic);
+}
+
 TEST_CASE("[EXPO-02] OdtDocumentWriter: does not mutate template file",
           "[formats.odt_writer]") {
     TempFile srcTmp{uniqueTempPath(".odt")};

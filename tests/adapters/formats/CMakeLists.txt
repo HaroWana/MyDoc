@@ -38,6 +38,10 @@ target_link_libraries(tests_adapters_formats_pdf_reader
 add_test(NAME formats.pdf_reader COMMAND tests_adapters_formats_pdf_reader)
 set_tests_properties(formats.pdf_reader PROPERTIES LABELS phase04)
 
+add_test(NAME formats.pdf_reader_acroform
+         COMMAND tests_adapters_formats_pdf_reader "[tst-3]")
+set_tests_properties(formats.pdf_reader_acroform PROPERTIES LABELS tst-3)
+
 add_executable(tests_adapters_formats_odt_writer test_odt_document_writer.cpp)
 target_link_libraries(tests_adapters_formats_odt_writer
     PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)

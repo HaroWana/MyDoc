@@ -139,6 +139,30 @@ TEST_CASE("MondocBundle: missing mondoc_version rejected [phase05][adapters.form
     REQUIRE(result.error().message().find("mondoc_version") != std::string::npos);
 }
 
+TEST_CASE("[TST-16] MondocBundle: future mondoc_version rejected [adapters.formats.mondoc]") {
+    TempFile out{tempBundlePath("future_version")};
+    std::string manifest =
+        R"({"mondoc_version":2,"name":"x","source_format":"docx",)"
+        R"("source_filename":"x.docx","exported_at":"2026-01-01T00:00:00Z",)"
+        R"("fields":[]})";
+    {
+        int ec = 0;
+        auto u8 = out.path.u8string();
+        std::string nativePath(reinterpret_cast<const char*>(u8.data()), u8.size());
+        zip_t* za = zip_open(nativePath.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &ec);
+        REQUIRE(za != nullptr);
+        zip_source_t* src = zip_source_buffer(za, manifest.data(), manifest.size(), 0);
+        REQUIRE(src != nullptr);
+        REQUIRE(zip_file_add(za, "manifest.json", src, ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8) >= 0);
+        REQUIRE(zip_close(za) >= 0);
+    }
+
+    MondocBundleReader reader;
+    auto result = reader.read(out.path);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().message().find("mondoc_version") != std::string::npos);
+}
+
 TEST_CASE("MondocBundle: rejects source file larger than 50MB [phase05][adapters.formats.mondoc]") {
     TempFile src{std::filesystem::temp_directory_path() / "mondoc_test_bundle_huge.docx"};
     {
