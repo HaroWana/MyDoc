@@ -61,9 +61,6 @@ void extractFormControls(const pugi::xml_document& doc,
             if (skip) continue;
 
             std::string rawName = child.attribute("form:name").value();
-            if (rawName.empty()) {
-                rawName = "field_" + std::to_string(fields.size());
-            }
             std::string name = normalize(rawName);
             if (name.empty() || !seen.insert(name).second) continue;
 

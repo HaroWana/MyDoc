@@ -204,3 +204,113 @@ TEST_CASE("[EXPO-02] OdtDocumentWriter: applies placeholder substitution in text
     REQUIRE(destXml.find("Jane Smith") != std::string::npos);
     REQUIRE(destXml.find("{{customer_name}}") == std::string::npos);
 }
+
+TEST_CASE("[FMT-4] OdtDocumentWriter: fills placeholder split across a text:span",
+          "[formats.odt_writer]") {
+    constexpr std::string_view xml = R"XML(<?xml version="1.0"?>
+<office:document-content
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:text>
+    <text:p>{{na<text:span>me}}</text:span></text:p>
+  </office:text></office:body>
+</office:document-content>)XML";
+
+    TempFile srcTmp{uniqueTempPath(".odt")};
+    writeMinimalOdt(srcTmp.path, xml);
+
+    Field f;
+    f.id_     = mondoc::FieldId{"field-3"};
+    f.name_   = "name";
+    f.type_   = FieldType::Text;
+    f.origin_ = FieldOrigin::Placeholder;
+
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"tpl-3"};
+    tpl.name_          = "test3";
+    tpl.source_format_ = "odt";
+    tpl.source_path_   = srcTmp.path;
+    tpl.fields_        = {f};
+
+    Fill fill;
+    fill.field_id_      = mondoc::FieldId{"field-3"};
+    fill.current_value_ = "X";
+
+    TempFile destTmp{uniqueTempPath(".odt")};
+    OdtDocumentWriter writer;
+    auto result = writer.write(tpl, {fill}, destTmp.path);
+    REQUIRE(result.has_value());
+
+    auto destXml = readContentXmlFrom(destTmp.path);
+    REQUIRE(destXml.find("X") != std::string::npos);
+    REQUIRE(destXml.find("{{") == std::string::npos);
+}
+
+TEST_CASE("[FMT-6-odt] OdtDocumentWriter: checkbox fill sets form:current-state",
+          "[formats.odt_writer]") {
+    constexpr std::string_view xml = R"XML(<?xml version="1.0"?>
+<office:document-content
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:form="urn:oasis:names:tc:opendocument:xmlns:form:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:text>
+    <office:forms>
+      <form:form form:name="F1">
+        <form:checkbox form:name="agree"/>
+      </form:form>
+    </office:forms>
+  </office:text></office:body>
+</office:document-content>)XML";
+
+    Field f;
+    f.id_     = mondoc::FieldId{"field-4"};
+    f.name_   = "agree";
+    f.type_   = FieldType::Checkbox;
+    f.origin_ = FieldOrigin::FormControl;
+
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"tpl-4"};
+    tpl.name_          = "test4";
+    tpl.source_format_ = "odt";
+    tpl.fields_        = {f};
+
+    {
+        TempFile srcTmp{uniqueTempPath(".odt")};
+        writeMinimalOdt(srcTmp.path, xml);
+        tpl.source_path_ = srcTmp.path;
+
+        Fill fill;
+        fill.field_id_      = mondoc::FieldId{"field-4"};
+        fill.current_value_ = "true";
+
+        TempFile destTmp{uniqueTempPath(".odt")};
+        OdtDocumentWriter writer;
+        auto result = writer.write(tpl, {fill}, destTmp.path);
+        REQUIRE(result.has_value());
+
+        auto destXml = readContentXmlFrom(destTmp.path);
+        REQUIRE(destXml.find(R"(form:current-state="checked")") != std::string::npos);
+        REQUIRE(destXml.find("form:current-value") == std::string::npos);
+    }
+    {
+        TempFile srcTmp{uniqueTempPath(".odt")};
+        writeMinimalOdt(srcTmp.path, xml);
+        tpl.source_path_ = srcTmp.path;
+
+        Fill fill;
+        fill.field_id_      = mondoc::FieldId{"field-4"};
+        fill.current_value_ = "false";
+
+        TempFile destTmp{uniqueTempPath(".odt")};
+        OdtDocumentWriter writer;
+        auto result = writer.write(tpl, {fill}, destTmp.path);
+        REQUIRE(result.has_value());
+
+        auto destXml = readContentXmlFrom(destTmp.path);
+        const bool unchecked =
+            destXml.find(R"(form:current-state="unchecked")") != std::string::npos ||
+            destXml.find("form:current-state") == std::string::npos;
+        REQUIRE(unchecked);
+        REQUIRE(destXml.find(R"(form:current-state="checked")") == std::string::npos);
+    }
+}

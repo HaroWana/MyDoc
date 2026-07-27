@@ -112,6 +112,21 @@ constexpr std::string_view kPlaceholderAfterSpanXml = R"XML(<?xml version="1.0"?
   </office:text></office:body>
 </office:document-content>)XML";
 
+constexpr std::string_view kUnnamedControlXml = R"XML(<?xml version="1.0"?>
+<office:document-content
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:form="urn:oasis:names:tc:opendocument:xmlns:form:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+  <office:body><office:text>
+    <office:forms>
+      <form:form form:name="F1">
+        <form:text form:name="customer_name" form:current-value=""/>
+        <form:text form:current-value=""/>
+      </form:form>
+    </office:forms>
+  </office:text></office:body>
+</office:document-content>)XML";
+
 }  // namespace
 
 TEST_CASE("[TMPL-02] OdtDocumentReader: extracts form:text field",
@@ -171,4 +186,15 @@ TEST_CASE("[TMPL-02] OdtDocumentReader: form-control wins on dedup",
     REQUIRE(it != fields.end());
     REQUIRE(it->type_ == mondoc::domain::FieldType::Paragraph);
     REQUIRE(it->origin_ == mondoc::domain::FieldOrigin::FormControl);
+}
+
+TEST_CASE("[FMT-7] OdtDocumentReader: unnamed form controls are skipped",
+          "[formats.odt_reader]") {
+    TempFile tmp{uniqueTempOdtPath()};
+    writeMinimalOdt(tmp.path, kUnnamedControlXml);
+    OdtDocumentReader reader;
+    auto result = reader.read(tmp.path);
+    REQUIRE(result.has_value());
+    REQUIRE(result->fields_.size() == 1);
+    REQUIRE(result->fields_[0].name_ == "customer_name");
 }

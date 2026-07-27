@@ -1,5 +1,6 @@
 #include "odt_document_writer.hpp"
 
+#include "detail/odt_text.hpp"
 #include "detail/placeholders.hpp"
 #include "detail/zip_util.hpp"
 #include "mondoc/util.hpp"
@@ -50,6 +51,12 @@ fillsByName(const mondoc::domain::Template& tpl,
     return out;
 }
 
+bool isTruthyFill(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return value == "true" || value == "1" || value == "yes" || value == "checked";
+}
+
 void applyFormControlFills(pugi::xml_document& doc,
                            const std::unordered_map<std::string, std::string>& byName,
                            const std::vector<mondoc::domain::Field>& fields) {
@@ -87,6 +94,16 @@ void applyFormControlFills(pugi::xml_document& doc,
             auto it = byName.find(fieldName);
             if (it == byName.end()) continue;
 
+            if (n == "form:checkbox") {
+                pugi::xml_attribute valueAttr = child.attribute("form:current-value");
+                if (valueAttr) child.remove_attribute(valueAttr);
+
+                pugi::xml_attribute stateAttr = child.attribute("form:current-state");
+                if (!stateAttr) stateAttr = child.append_attribute("form:current-state");
+                stateAttr.set_value(isTruthyFill(it->second) ? "checked" : "unchecked");
+                continue;
+            }
+
             pugi::xml_attribute attr = child.attribute("form:current-value");
             if (attr) {
                 attr.set_value(it->second.c_str());
@@ -105,19 +122,19 @@ void applyPlaceholderFills(pugi::xml_document& doc,
     std::function<void(pugi::xml_node)> traverseText;
     traverseText = [&](pugi::xml_node node) {
         for (pugi::xml_node child : node.children()) {
-            std::string_view n{child.name()};
-            if (n == "text:p" || n == "text:span") {
-                for (pugi::xml_node c : child.children()) {
-                    if (c.type() == pugi::node_pcdata) {
-                        std::string txt = c.value();
-                        std::string rep = detail::substituteAll(txt, byName);
-                        if (rep != txt) c.set_value(rep.c_str());
+            if (std::string_view{child.name()} == "text:p") {
+                std::string original;
+                detail::appendOdtText(child, original);
+                std::string mutated = detail::substituteAll(original, byName);
+                if (mutated != original) {
+                    while (child.first_child()) {
+                        child.remove_child(child.first_child());
                     }
+                    child.append_child(pugi::node_pcdata).set_value(mutated.c_str());
                 }
-                traverseText(child);
-            } else {
-                traverseText(child);
+                continue;
             }
+            traverseText(child);
         }
     };
     traverseText(doc);
