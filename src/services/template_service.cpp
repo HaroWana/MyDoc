@@ -46,9 +46,16 @@ TemplateService::extractDraft(const std::filesystem::path& path) {
 
     auto draft = readDraft();
     if (!draft) return mondoc::unexpected(draft.error());
+
+    // Once the schema is in hand the template is registrable and manually
+    // fillable, which the app must remain fully usable for without AI.
+    // document_text only feeds AI field detection, so a text-extraction
+    // failure degrades to empty text rather than failing registration —
+    // PoDoFo in particular can load a valid AcroForm yet throw while
+    // extracting text.
     auto text = mondoc::adapters::formats::extractPlainText(path);
-    if (!text) return mondoc::unexpected(text.error());
-    return DraftWithText{std::move(*draft), std::move(*text)};
+    return DraftWithText{std::move(*draft),
+                         text ? std::move(*text) : std::string{}};
 }
 
 mondoc::expected<void, mondoc::Error>
