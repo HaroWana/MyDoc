@@ -199,6 +199,7 @@ bool FillSessionView::openSession(const mondoc::FillSessionId& id,
     }
     auto& tpl = *tplRes;
 
+    ++sessionGeneration_;
     currentSessionId_ = id;
     currentTemplateId_ = session.template_id_;
     templateNameLabel_->setText(QString::fromStdString(tpl.name_));
@@ -318,6 +319,7 @@ FillSessionView::~FillSessionView() {
 }
 
 void FillSessionView::clearSession() {
+    ++sessionGeneration_;
     shutdownThread(aiThread_, aiWorker_, /*mustJoin=*/false);
     shutdownThread(refineThread_, refineWorker_, /*mustJoin=*/false);
 
@@ -455,8 +457,15 @@ void FillSessionView::onAiFinished(std::vector<mondoc::domain::Fill> fills) {
     std::vector<mondoc::services::AiExtractedFact> facts;
     for (const auto& f : fills) {
         for (const auto& ref : f.source_refs_) {
+            int sourceIndex = 0;
+            for (std::size_t i = 0; i < sourceDocIds_.size(); ++i) {
+                if (sourceDocIds_[i] == ref.source_id_) {
+                    sourceIndex = static_cast<int>(i);
+                    break;
+                }
+            }
             mondoc::services::AiExtractedFact e;
-            e.source_index_ = 0;
+            e.source_index_ = sourceIndex;
             e.char_start_   = ref.range_.begin_;
             e.char_end_     = ref.range_.end_;
             e.excerpt_      = ref.excerpt_;
@@ -511,6 +520,7 @@ void FillSessionView::onChatRefinementRequested(
         return;
     }
 
+    refineGeneration_ = sessionGeneration_;
     refineThread_ = new QThread(this);
     refineWorker_ = new AiRefineWorker(service_, currentSessionId_,
                                        prompt.toStdString(), currentSources(),
@@ -536,6 +546,13 @@ void FillSessionView::onChatRefinementRequested(
 }
 
 void FillSessionView::onChatRefineFinished(std::vector<mondoc::domain::Fill> fills) {
+    // Task 5 severs signal delivery from an abandoned refine thread on
+    // shutdown/clearSession, but a refine started just before a new session
+    // is opened can still race: the thread keeps running (detached, not
+    // joined) and its result lands here after openSession() has already
+    // pointed this view at a different session. Drop it if the generation
+    // that started it no longer matches.
+    if (refineGeneration_ != sessionGeneration_) return;
     if (!fills.empty()) {
         fieldPane_->populateAi(fills);
         if (chatPane_)
@@ -547,6 +564,7 @@ void FillSessionView::onChatRefineFinished(std::vector<mondoc::domain::Fill> fil
 }
 
 void FillSessionView::onChatRefineFailed(QString message) {
+    if (refineGeneration_ != sessionGeneration_) return;
     if (chatPane_) {
         chatPane_->appendSystemMessage(tr("Refinement failed: %1").arg(message));
         chatPane_->setBusy(false);

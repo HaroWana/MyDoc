@@ -1,5 +1,6 @@
 #include "source_doc_pane.hpp"
 
+#include <QByteArray>
 #include <QFont>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -133,8 +134,12 @@ void SourceDocPane::highlightRef(const mondoc::domain::SourceRef& ref) {
         }
     }
 
-    const int start = static_cast<int>(ref.range_.begin_);
-    const int end   = static_cast<int>(ref.range_.end_);
+    // ref.range_ holds UTF-8 byte offsets, but QTextCursor::setPosition takes
+    // UTF-16 code unit offsets, so re-decode the UTF-8 prefix up to each
+    // offset and count its UTF-16 length.
+    const QByteArray utf8 = view->toPlainText().toUtf8();
+    const int start = QString::fromUtf8(utf8.data(), static_cast<int>(ref.range_.begin_)).size();
+    const int end   = QString::fromUtf8(utf8.data(), static_cast<int>(ref.range_.end_)).size();
     QTextCursor cur(view->document());
     cur.setPosition(start);
     cur.setPosition(end, QTextCursor::KeepAnchor);

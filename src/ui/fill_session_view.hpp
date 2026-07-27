@@ -76,6 +76,8 @@ private:
     mondoc::domain::ITemplateRepository& templateRepo_;
     mondoc::FillSessionId currentSessionId_;
     mondoc::TemplateId currentTemplateId_;
+    int sessionGeneration_ = 0;
+    int refineGeneration_  = 0;
 
     QPushButton* backBtn_       = nullptr;
     QLabel* templateNameLabel_  = nullptr;

@@ -34,7 +34,6 @@
 
 #include <chrono>
 #include <ctime>
-#include <set>
 #include <string>
 
 #include "about_dialog.hpp"
@@ -44,23 +43,13 @@
 #include "resume_banner.hpp"
 #include "schema_dock_widget.hpp"
 #include "settings_dialog.hpp"
+#include "supported_formats.hpp"
 
 namespace mondoc::ui {
 
 namespace {
 
 constexpr int kTemplateIdRole = Qt::UserRole + 1;
-
-const std::set<QString>& acceptedExtensions() {
-    static const std::set<QString> exts{
-        QStringLiteral("docx"),
-        QStringLiteral("odt"),
-        QStringLiteral("pdf"),
-        QStringLiteral("txt"),
-        QStringLiteral("md"),
-    };
-    return exts;
-}
 
 bool hasAcceptedExtension(const QUrl& url) {
     if (!url.isLocalFile()) return false;
@@ -187,6 +176,8 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
             this, &MainWindow::onSessionExported);
     connect(fillSessionView_, &FillSessionView::exportFailed,
             this, &MainWindow::onSessionExportFailed);
+    connect(fillSessionView_, &FillSessionView::statusMessageRequested,
+            statusBar(), &QStatusBar::showMessage);
     connect(resumeBanner_, &ResumeBanner::resumeRequested,
             this, &MainWindow::onResumeRequested);
     connect(resumeBanner_, &ResumeBanner::discardRequested,
@@ -359,7 +350,7 @@ void MainWindow::setAiFieldDetector(mondoc::adapters::ai::AiFieldDetector* detec
 void MainWindow::onRegisterClicked() {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Register Template"), QString{},
-        tr("Documents (*.docx *.odt *.pdf *.txt *.md)"));
+        registrationDialogFilter());
     if (path.isEmpty()) return;
     triggerRegistration(qStringToPath(path));
 }
@@ -569,9 +560,17 @@ void MainWindow::dragLeaveEvent(QDragLeaveEvent*) {
 void MainWindow::dropEvent(QDropEvent* event) {
     setDropHighlight(false);
     if (!event->mimeData()->hasUrls()) return;
+    int acceptedCount = 0;
     for (const auto& url : event->mimeData()->urls()) {
         if (!hasAcceptedExtension(url)) continue;
-        triggerRegistration(qStringToPath(url.toLocalFile()));
+        if (acceptedCount == 0) {
+            triggerRegistration(qStringToPath(url.toLocalFile()));
+        }
+        ++acceptedCount;
+    }
+    if (acceptedCount > 1) {
+        statusBar()->showMessage(
+            tr("Registered first file; drop others individually."));
     }
     event->acceptProposedAction();
 }
@@ -589,7 +588,7 @@ void MainWindow::onFillSessionClicked() {
 
     const QStringList paths = QFileDialog::getOpenFileNames(
         this, tr("Attach source documents (optional)"), QString{},
-        tr("Source documents (*.docx *.txt *.md)"));
+        attachSourcesDialogFilter());
     std::vector<std::filesystem::path> sourcePaths;
     sourcePaths.reserve(static_cast<std::size_t>(paths.size()));
     for (const auto& p : paths) {
@@ -692,15 +691,14 @@ QString MainWindow::relativeTimestamp(std::int64_t updatedAtUnix) const {
 }
 
 void MainWindow::onSettingsClicked() {
-    auto* dlg = new SettingsDialog(currentConfig_, this);
-    connect(dlg, &SettingsDialog::settingsSaved, this,
+    SettingsDialog dlg(currentConfig_, this);
+    connect(&dlg, &SettingsDialog::settingsSaved, this,
             [this](mondoc::adapters::ai::LlmConfig cfg) {
                 currentConfig_ = cfg;
                 if (reconfigureLlmCallback_) reconfigureLlmCallback_(std::move(cfg));
                 statusBar()->showMessage(tr("Settings saved."), 3000);
             });
-    dlg->setAttribute(Qt::WA_DeleteOnClose);
-    dlg->exec();
+    dlg.exec();
 }
 
 void MainWindow::onExportTemplate() {

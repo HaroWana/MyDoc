@@ -173,6 +173,13 @@ void FieldFormPane::buildRow(const mondoc::domain::Field& field,
     inputToFieldId_[input] = field.id_;
     inputByField_[field.id_.value()] = input;
 
+    if (auto* te = qobject_cast<QTextEdit*>(input)) {
+        // QTextEdit delivers mouse events to its viewport, not the widget
+        // itself, so the click-to-highlight-source handler needs both mapped.
+        te->viewport()->installEventFilter(this);
+        inputToFieldId_[te->viewport()] = field.id_;
+    }
+
     if (field.type_ != FieldType::Checkbox) {
         auto* nameLabel = new QLabel(displayName, rowContainer);
         nameLabel->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
