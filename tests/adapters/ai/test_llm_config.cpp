@@ -189,14 +189,30 @@ TEST_CASE("LlmConfig::loadFromJson: distinguishes fs error from absent file (SAI
 }
 #endif
 
+#if !defined(_WIN32)
 TEST_CASE("LlmConfig::saveToJson: unwritable path returns Error [phase05][adapters.ai.llm_config]") {
-    std::filesystem::path badPath =
-        std::filesystem::path("/proc/mondoc_test_write_denied/config.json");
+    if (::geteuid() == 0) {
+        SKIP("running as root: directory permissions are not enforced");
+    }
+
+    auto parentDir = std::filesystem::temp_directory_path() /
+        ("mondoc_test_llm_config_nowrite_" +
+         std::to_string(std::mt19937_64{std::random_device{}()}()));
+    std::filesystem::create_directory(parentDir);
+    auto badPath = parentDir / "config.json";
+
+    std::filesystem::permissions(parentDir, std::filesystem::perms::none);
+
     LlmConfig cfg;
     cfg.api_url = "https://x.com";
     cfg.api_key = "k";
     cfg.model   = "m";
     auto result = cfg.saveToJson(badPath);
+
+    std::filesystem::permissions(parentDir, std::filesystem::perms::owner_all);
+    std::filesystem::remove_all(parentDir);
+
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().kind() == mondoc::Error::Kind::Generic);
 }
+#endif

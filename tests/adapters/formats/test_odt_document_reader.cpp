@@ -49,6 +49,7 @@ TEST_CASE("[TMPL-02] OdtDocumentReader: rejects file with wrong extension",
     OdtDocumentReader reader;
     auto result = reader.read(std::filesystem::path{"foo.docx"});
     REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == mondoc::Error::Kind::InvalidArgument);
 }
 
 TEST_CASE("[TMPL-02] OdtDocumentReader: returns error for corrupt zip",
@@ -61,6 +62,7 @@ TEST_CASE("[TMPL-02] OdtDocumentReader: returns error for corrupt zip",
     OdtDocumentReader reader;
     auto result = reader.read(f.path);
     REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == mondoc::Error::Kind::Generic);
 }
 
 namespace {

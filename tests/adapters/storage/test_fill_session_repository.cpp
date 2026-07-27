@@ -66,13 +66,14 @@ TEST_CASE("Migrations apply once and are idempotent",
           "[storage.fill_session]") {
     auto conn = SqliteConnection::open(":memory:");
     REQUIRE(conn.has_value());
+    const auto expectedCount = static_cast<int>(registeredMigrations().size());
     auto first = runMigrations(*conn);
     REQUIRE(first.has_value());
-    REQUIRE(*first == 6);
+    REQUIRE(*first == expectedCount);
 
     auto second = runMigrations(*conn);
     REQUIRE(second.has_value());
-    REQUIRE(*second == 6);
+    REQUIRE(*second == expectedCount);
 }
 
 TEST_CASE("SqliteFillSessionRepository: save+findById round-trips a session with fills",

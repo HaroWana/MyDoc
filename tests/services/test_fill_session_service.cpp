@@ -1041,13 +1041,8 @@ TEST_CASE("[FILL-03] FillSessionService::readSourceText: accepts .odt source",
     FillSessionService svc{fillRepo, tplRepo};
     auto result = svc.readSourceText(tmp.path);
 
-    // Must succeed OR return a generic error — must NOT return InvalidArgument
-    if (!result.has_value()) {
-        REQUIRE(result.error().kind() != mondoc::Error::Kind::InvalidArgument);
-    } else {
-        // Valid ODT: should contain the paragraph text
-        REQUIRE(result->find("Hello world") != std::string::npos);
-    }
+    REQUIRE(result.has_value());
+    REQUIRE(result->find("Hello world") != std::string::npos);
 }
 
 TEST_CASE("[FILL-04] FillSessionService::readSourceText: replaces invalidArgument stub for .pdf",
