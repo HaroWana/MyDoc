@@ -273,6 +273,7 @@ void FillSessionView::capturePreFillSnapshot() {
 }
 
 void FillSessionView::restorePreFillSnapshot() {
+    undoStack_->clear();
     auto resumed = service_.resumeSession(currentSessionId_);
     if (!resumed) return;
     auto tpl = templateRepo_.findById(currentTemplateId_);
