@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -18,7 +19,7 @@ public:
     ~LlmClient() override = default;
 
     mondoc::expected<std::string, LlmError>
-    chat(const std::string& body) override;
+    chat(const std::string& body, const std::atomic<bool>* cancelled = nullptr) override;
 
     static LlmError classifyHttpStatus(int status, std::string bodyTrunc);
 

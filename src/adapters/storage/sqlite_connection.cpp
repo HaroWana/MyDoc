@@ -19,7 +19,11 @@ SqliteConnection::open(const std::filesystem::path& dbPath) {
         try {
             db->exec("PRAGMA journal_mode = WAL;");
         } catch (const SQLite::Exception&) {
-            // :memory: databases keep the default journal mode.
+            // :memory: databases keep the default journal mode; any other
+            // path propagates as the open-error below.
+            if (pathToUtf8(dbPath) != ":memory:") {
+                throw;
+            }
         }
         db->exec("PRAGMA foreign_keys = ON;");
         db->exec("PRAGMA synchronous = NORMAL;");

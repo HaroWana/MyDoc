@@ -5,6 +5,7 @@
 
 #include <httplib.h>
 
+#include <atomic>
 #include <chrono>
 #include <string>
 #include <thread>
@@ -123,6 +124,52 @@ TEST_CASE("LlmClient::chat: 500 from real server -> BadResponse (APP-06)",
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().kind() == LlmError::Kind::BadResponse);
     REQUIRE(result.error().message().find("500") != std::string::npos);
+    // SAI-10: the truncated response body must be included for 5xx, exactly
+    // as it already is for 4xx.
+    REQUIRE(result.error().message().find("internal error") != std::string::npos);
+}
+
+TEST_CASE("LlmClient::chat: cancellation flag aborts an in-flight body read (SAI-2)",
+          "[adapters.ai][llm_client][app06]") {
+    httplib::Server svr;
+    svr.Post("/v1/chat/completions",
+             [](const httplib::Request&, httplib::Response& res) {
+                 res.status = 200;
+                 res.set_chunked_content_provider(
+                     "application/json",
+                     [](std::size_t /*offset*/, httplib::DataSink& sink) {
+                         std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                         std::string chunk(4096, 'x');
+                         sink.write(chunk.data(), chunk.size());
+                         return true;
+                     });
+             });
+
+    int port = svr.bind_to_any_port("127.0.0.1");
+    if (port <= 0) {
+        SKIP("could not bind test server");
+    }
+    std::thread serverThread([&] { svr.listen_after_bind(); });
+    while (!svr.is_running()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    auto client = LlmClient::create("http://127.0.0.1:" + std::to_string(port), "k").value();
+    std::atomic<bool> cancelled{false};
+    mondoc::expected<std::string, LlmError> result{std::string{}};
+    std::thread chatThread([&] {
+        result = client->chat("{}", &cancelled);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    cancelled.store(true);
+    chatThread.join();
+
+    svr.stop();
+    serverThread.join();
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::Cancelled);
 }
 
 TEST_CASE("LlmClient::chat: unreachable host -> Unreachable (APP-03)",

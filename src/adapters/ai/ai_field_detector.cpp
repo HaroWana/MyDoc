@@ -90,7 +90,7 @@ AiFieldDetector::detect(const std::string& documentText,
         {"stream", false},
     };
 
-    auto resp = client_.chat(body.dump());
+    auto resp = client_.chat(body.dump(), &cancelled);
     if (!resp) return mondoc::unexpected<LlmError>(resp.error());
 
     if (cancelled.load()) {

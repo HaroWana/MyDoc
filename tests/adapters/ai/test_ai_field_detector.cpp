@@ -43,7 +43,8 @@ public:
         responses_.emplace(mondoc::unexpected<LlmError>(std::move(e)));
     }
 
-    mondoc::expected<std::string, LlmError> chat(const std::string& body) override {
+    mondoc::expected<std::string, LlmError>
+    chat(const std::string& body, const std::atomic<bool>* /*cancelled*/) override {
         chatCalls_.push_back(body);
         if (responses_.empty()) {
             if (onAfterCall_) onAfterCall_();

@@ -9,6 +9,10 @@
 #include <string>
 #include <utility>
 
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
+
 using namespace mondoc::adapters::ai;
 
 namespace {
@@ -136,6 +140,54 @@ TEST_CASE("LlmConfig::saveToJson: round-trips all three fields [phase05][adapter
     REQUIRE(loadResult->model == "gpt-4o");
     REQUIRE(loadResult->isConfigured());
 }
+
+#if !defined(_WIN32)
+TEST_CASE("LlmConfig::saveToJson: creates key file with 0600 permissions from the start (SAI-8)",
+          "[adapters.ai][llm_config]") {
+    auto path = uniqueTempPath(".json");
+    TempFile tmp{path};
+
+    LlmConfig cfg;
+    cfg.api_url = "https://hub.example.com/v1";
+    cfg.api_key = "sk-secret";
+    cfg.model   = "gpt-4o";
+
+    auto saveResult = cfg.saveToJson(path);
+    REQUIRE(saveResult.has_value());
+
+    std::error_code ec;
+    auto status = std::filesystem::status(path, ec);
+    REQUIRE_FALSE(ec);
+    auto perms = status.permissions() & std::filesystem::perms::mask;
+    REQUIRE(perms == (std::filesystem::perms::owner_read |
+                      std::filesystem::perms::owner_write));
+}
+#endif
+
+#if !defined(_WIN32)
+TEST_CASE("LlmConfig::loadFromJson: distinguishes fs error from absent file (SAI-9)",
+          "[adapters.ai][llm_config]") {
+    if (::geteuid() == 0) {
+        SKIP("running as root: directory permissions are not enforced");
+    }
+
+    auto parentDir = std::filesystem::temp_directory_path() /
+        ("mondoc_test_llm_config_noaccess_" +
+         std::to_string(std::mt19937_64{std::random_device{}()}()));
+    std::filesystem::create_directory(parentDir);
+    auto childPath = parentDir / "config.json";
+
+    std::filesystem::permissions(parentDir, std::filesystem::perms::none);
+
+    auto result = LlmConfig::loadFromJson(childPath);
+
+    std::filesystem::permissions(parentDir, std::filesystem::perms::owner_all);
+    std::filesystem::remove_all(parentDir);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == mondoc::Error::Kind::Generic);
+}
+#endif
 
 TEST_CASE("LlmConfig::saveToJson: unwritable path returns Error [phase05][adapters.ai.llm_config]") {
     std::filesystem::path badPath =

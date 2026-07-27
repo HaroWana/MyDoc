@@ -153,7 +153,7 @@ AiFillPipeline::run(const RunInput& input, const std::atomic<bool>& cancelled) {
         {"stream", false},
     };
 
-    auto pass1Resp = client_.chat(pass1Body.dump());
+    auto pass1Resp = client_.chat(pass1Body.dump(), &cancelled);
     if (!pass1Resp) return mondoc::unexpected<LlmError>(pass1Resp.error());
     if (cancelled.load()) {
         return mondoc::unexpected<LlmError>(LlmError::cancelled());
@@ -172,7 +172,7 @@ AiFillPipeline::run(const RunInput& input, const std::atomic<bool>& cancelled) {
         {"stream", false},
     };
 
-    auto pass2Resp = client_.chat(pass2Body.dump());
+    auto pass2Resp = client_.chat(pass2Body.dump(), &cancelled);
     if (!pass2Resp) return mondoc::unexpected<LlmError>(pass2Resp.error());
     if (cancelled.load()) {
         return mondoc::unexpected<LlmError>(LlmError::cancelled());
@@ -253,7 +253,7 @@ AiFillPipeline::refine(const RefineInput& input, const std::atomic<bool>* cancel
         {"stream", false},
     };
 
-    auto resp = client_.chat(body.dump());
+    auto resp = client_.chat(body.dump(), cancelled);
     if (!resp) return mondoc::unexpected<LlmError>(resp.error());
     if (cancelled != nullptr && cancelled->load()) {
         return mondoc::unexpected<LlmError>(LlmError::cancelled());

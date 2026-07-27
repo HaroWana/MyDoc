@@ -13,8 +13,15 @@ namespace mondoc::adapters::ai {
 mondoc::expected<LlmConfig, mondoc::Error>
 LlmConfig::loadFromJson(const std::filesystem::path& path) {
     std::error_code ec;
-    if (!std::filesystem::exists(path, ec) || ec) {
+    auto st = std::filesystem::status(path, ec);
+    if (st.type() == std::filesystem::file_type::not_found) {
+        // A genuinely absent file is not an error (FILL-12's "AI disabled
+        // gracefully" path) even though libstdc++ sets ec (ENOENT) here too.
         return LlmConfig{};
+    }
+    if (ec) {
+        return mondoc::unexpected(mondoc::Error::generic(
+            "cannot stat llm config file: " + ec.message()));
     }
 
     std::ifstream in(path, std::ios::binary);
@@ -63,29 +70,55 @@ LlmConfig::saveToJson(const std::filesystem::path& path) const {
         std::filesystem::create_directories(path.parent_path(), ec);
     }
 
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    auto tmpPath = path;
+    tmpPath += ".tmp";
+
+    {
+        std::ofstream create(tmpPath, std::ios::binary | std::ios::trunc);
+        if (!create) {
+            auto u8 = tmpPath.u8string();
+            return mondoc::unexpected(mondoc::Error::generic(
+                std::string{"cannot create temp config file: "} +
+                std::string(reinterpret_cast<const char*>(u8.data()), u8.size())));
+        }
+    }
+
+    // Restrict permissions before any content (including the API key) is
+    // written, so the key is never briefly world/group-readable on disk.
+    // On Windows this is a no-op (fs::permissions cannot express ACLs there).
+#if !defined(_WIN32)
+    {
+        std::error_code pec;
+        std::filesystem::permissions(tmpPath,
+            std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+            std::filesystem::perm_options::replace, pec);
+    }
+#endif
+
+    std::ofstream out(tmpPath, std::ios::binary | std::ios::trunc);
     if (!out) {
-        auto u8 = path.u8string();
+        auto u8 = tmpPath.u8string();
         return mondoc::unexpected(mondoc::Error::generic(
             std::string{"cannot write config file: "} +
             std::string(reinterpret_cast<const char*>(u8.data()), u8.size())));
     }
     out << doc.dump(2);
     if (!out) {
-        auto u8 = path.u8string();
+        auto u8 = tmpPath.u8string();
         return mondoc::unexpected(mondoc::Error::generic(
             std::string{"write error on config file: "} +
             std::string(reinterpret_cast<const char*>(u8.data()), u8.size())));
     }
     out.close();
-#if !defined(_WIN32)
-    {
-        std::error_code pec;
-        std::filesystem::permissions(path,
-            std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
-            std::filesystem::perm_options::replace, pec);
+
+    std::error_code renameEc;
+    std::filesystem::rename(tmpPath, path, renameEc);
+    if (renameEc) {
+        auto u8 = path.u8string();
+        return mondoc::unexpected(mondoc::Error::generic(
+            std::string{"cannot rename temp config file to: "} +
+            std::string(reinterpret_cast<const char*>(u8.data()), u8.size())));
     }
-#endif
     return {};
 }
 

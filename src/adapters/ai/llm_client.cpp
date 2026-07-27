@@ -48,7 +48,8 @@ LlmError LlmClient::classifyHttpStatus(int status, std::string bodyTrunc) {
         return LlmError::rateLimited();
     }
     if (status >= 500) {
-        return LlmError::badResponse("HTTP " + std::to_string(status));
+        return LlmError::badResponse(
+            "HTTP " + std::to_string(status) + ": " + std::move(bodyTrunc));
     }
     if (status >= 400) {
         return LlmError::badResponse(
@@ -76,7 +77,7 @@ LlmClient::LlmClient(std::string host, std::string apiKey, std::string pathPrefi
       pathPrefix_(std::move(pathPrefix)) {}
 
 mondoc::expected<std::string, LlmError>
-LlmClient::chat(const std::string& body) {
+LlmClient::chat(const std::string& body, const std::atomic<bool>* cancelled) {
     httplib::Client cli(host_);
     cli.set_connection_timeout(std::chrono::seconds(10));
     cli.set_read_timeout(std::chrono::seconds(60));
@@ -87,21 +88,40 @@ LlmClient::chat(const std::string& body) {
         {"Content-Type",  "application/json"}
     };
 
+    std::string responseBody;
+    bool tooLarge = false;
+    bool wasCancelled = false;
+    auto receiver = [&](const char* data, std::size_t len) {
+        if (cancelled != nullptr && cancelled->load()) {
+            wasCancelled = true;
+            return false;
+        }
+        responseBody.append(data, len);
+        if (responseBody.size() > kMaxResponseBytes) {
+            tooLarge = true;
+            return false;
+        }
+        return true;
+    };
+
     auto res = cli.Post(pathPrefix_ + "/chat/completions",
-                        headers, body, "application/json");
+                        headers, body, "application/json", receiver);
+
+    if (wasCancelled) {
+        return mondoc::unexpected(LlmError::cancelled());
+    }
+    if (tooLarge) {
+        return mondoc::unexpected(LlmError::badResponse("response too large"));
+    }
     if (!res) {
         return mondoc::unexpected(
             LlmError::unreachable(httplib::to_string(res.error())));
     }
     if (res->status >= 200 && res->status < 300) {
-        if (res->body.size() > kMaxResponseBytes) {
-            return mondoc::unexpected(LlmError::badResponse(
-                "response body exceeds 10MB cap"));
-        }
-        return res->body;
+        return responseBody;
     }
-    std::string trunc = res->body.substr(
-        0, std::min<std::size_t>(256, res->body.size()));
+    std::string trunc = responseBody.substr(
+        0, std::min<std::size_t>(256, responseBody.size()));
     return mondoc::unexpected(
         classifyHttpStatus(res->status, std::move(trunc)));
 }
