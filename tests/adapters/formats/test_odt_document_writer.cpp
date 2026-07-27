@@ -8,10 +8,12 @@
 #include "domain/field.hpp"
 #include "domain/template.hpp"
 
+#include "support/temp_files.hpp"
+#include "support/zip_fixtures.hpp"
+
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,27 +28,10 @@ using mondoc::domain::Template;
 namespace {
 
 std::filesystem::path uniqueTempPath(std::string_view ext) {
-    static std::mt19937_64 rng{std::random_device{}()};
-    auto suffix = std::to_string(rng());
-    auto path = std::filesystem::temp_directory_path()
-               / ("mondoc_odt_writer_" + suffix + std::string{ext});
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
-    return path;
+    return mondoc::tests_support::uniqueTempPath("mondoc_odt_writer_", std::string{ext});
 }
 
-void writeMinimalOdt(const std::filesystem::path& path,
-                     std::string_view contentXml) {
-    int err = 0;
-    zip_t* zf = zip_open(path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
-    REQUIRE(zf != nullptr);
-
-    zip_source_t* src = zip_source_buffer(zf, contentXml.data(), contentXml.size(), 0);
-    REQUIRE(src != nullptr);
-    REQUIRE(zip_file_add(zf, "content.xml", src, ZIP_FL_OVERWRITE) >= 0);
-
-    REQUIRE(zip_close(zf) == 0);
-}
+using mondoc::tests_support::writeMinimalOdt;
 
 std::vector<unsigned char> readAllBytes(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
@@ -72,14 +57,7 @@ std::string readContentXmlFrom(const std::filesystem::path& path) {
     return xml;
 }
 
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-    }
-};
+using mondoc::tests_support::TempFile;
 
 constexpr std::string_view kFormControlXml = R"XML(<?xml version="1.0"?>
 <office:document-content

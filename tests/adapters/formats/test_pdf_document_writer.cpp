@@ -2,11 +2,7 @@
 
 #include <podofo/podofo.h>
 
-#include <chrono>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
-#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,6 +11,8 @@
 #include "domain/field.hpp"
 #include "domain/fill.hpp"
 #include "domain/template.hpp"
+
+#include "support/temp_files.hpp"
 
 using mondoc::FieldId;
 using mondoc::TemplateId;
@@ -27,19 +25,12 @@ using mondoc::domain::Template;
 namespace {
 
 std::filesystem::path uniqueTempPath(const std::string& ext) {
-    static std::mt19937_64 rng{std::random_device{}()};
-    auto suffix = std::to_string(rng()) + "_" +
-                  std::to_string(std::chrono::steady_clock::now()
-                                     .time_since_epoch().count());
-    return std::filesystem::temp_directory_path()
-        / ("mondoc_test_pdf_" + suffix + ext);
+    return mondoc::tests_support::uniqueTempPath("mondoc_test_pdf_", ext);
 }
 
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() { std::error_code ec; std::filesystem::remove(path, ec); }
-};
+using mondoc::tests_support::TempFile;
+using mondoc::tests_support::writeFile;
+using mondoc::tests_support::readFile;
 
 std::string extractAllText(const std::filesystem::path& pdfPath) {
     PoDoFo::PdfMemDocument doc;
@@ -125,10 +116,7 @@ TEST_CASE("PdfDocumentWriter: does not delete a pre-existing dest file on a pre-
           "[formats.pdf_writer]") {
     TempFile tmp{uniqueTempPath(".pdf")};
     const std::string preExistingContent = "pre-existing user file, not ours to touch";
-    {
-        std::ofstream out(tmp.path, std::ios::binary);
-        out << preExistingContent;
-    }
+    writeFile(tmp.path, preExistingContent);
 
     Template tpl;
     tpl.id_ = TemplateId{"t1"};
@@ -141,8 +129,5 @@ TEST_CASE("PdfDocumentWriter: does not delete a pre-existing dest file on a pre-
     REQUIRE_FALSE(result.has_value());
 
     REQUIRE(std::filesystem::exists(tmp.path));
-    std::ifstream in(tmp.path, std::ios::binary);
-    const std::string afterContent{std::istreambuf_iterator<char>{in},
-                                   std::istreambuf_iterator<char>{}};
-    REQUIRE(afterContent == preExistingContent);
+    REQUIRE(readFile(tmp.path) == preExistingContent);
 }

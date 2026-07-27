@@ -2,18 +2,18 @@ find_package(nlohmann_json CONFIG REQUIRED)
 
 add_executable(tests_services_template_service test_template_service.cpp)
 target_link_libraries(tests_services_template_service
-    PRIVATE mondoc_services mondoc_adapters_storage Catch2::Catch2WithMain)
+    PRIVATE mondoc_services mondoc_adapters_storage tests_support Catch2::Catch2WithMain)
 add_test(NAME services.template_service COMMAND tests_services_template_service)
 
 add_executable(tests_services_fill_session test_fill_session_service.cpp)
 target_link_libraries(tests_services_fill_session
     PRIVATE mondoc_services mondoc_adapters_storage mondoc_adapters_ai
-            nlohmann_json::nlohmann_json Catch2::Catch2WithMain)
+            nlohmann_json::nlohmann_json tests_support Catch2::Catch2WithMain)
 add_test(NAME services.fill_session COMMAND tests_services_fill_session)
 set_tests_properties(services.fill_session PROPERTIES LABELS phase02)
 
 add_executable(tests_services_template_export_import test_template_service_export_import.cpp)
 target_link_libraries(tests_services_template_export_import
-    PRIVATE mondoc_services Catch2::Catch2WithMain)
+    PRIVATE mondoc_services tests_support Catch2::Catch2WithMain)
 add_test(NAME services.template_export_import COMMAND tests_services_template_export_import)
 set_tests_properties(services.template_export_import PROPERTIES LABELS phase05)

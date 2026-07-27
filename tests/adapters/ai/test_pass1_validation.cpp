@@ -7,10 +7,13 @@
 #include "ai_fill_pipeline.hpp"
 #include "mondoc/id.hpp"
 
+#include "support/fake_llm_client.hpp"
+
 namespace {
 
 using mondoc::adapters::ai::AiFillPipeline;
 using mondoc::adapters::ai::AiFillSourceDoc;
+using mondoc::tests_support::makeChatCompletion;
 
 constexpr const char* kFixture =
     "The patient John Doe was born on 1985-03-12 in Berlin.";
@@ -19,21 +22,12 @@ std::vector<AiFillSourceDoc> oneSource() {
     return {AiFillSourceDoc{mondoc::SourceDocId{"src-0"}, "report.txt", kFixture}};
 }
 
-std::string wrapAsChatCompletion(const std::string& contentJson) {
-    nlohmann::json envelope = {
-        {"choices", nlohmann::json::array({
-            nlohmann::json{{"message", nlohmann::json{{"content", contentJson}}}}
-        })}
-    };
-    return envelope.dump();
-}
-
 }  // namespace
 
 TEST_CASE("validatePass1Facts: accepts exact-offset fact",
           "[adapters.ai][pass1][fill-07]") {
     const std::string inner = R"({"facts":[{"source_index":0,"char_start":12,"char_end":20,"excerpt":"John Doe","summary":"name"}]})";
-    auto facts = AiFillPipeline::validatePass1Facts(wrapAsChatCompletion(inner), oneSource());
+    auto facts = AiFillPipeline::validatePass1Facts(makeChatCompletion(inner), oneSource());
     REQUIRE(facts.size() == 1);
     REQUIRE(facts[0].excerpt_ == "John Doe");
     REQUIRE(facts[0].char_start_ == 12);
@@ -43,7 +37,7 @@ TEST_CASE("validatePass1Facts: accepts exact-offset fact",
 TEST_CASE("validatePass1Facts: corrects via find() when offsets are wrong but excerpt matches",
           "[adapters.ai][pass1][fill-07]") {
     const std::string inner = R"({"facts":[{"source_index":0,"char_start":3,"char_end":11,"excerpt":"John Doe","summary":"name"}]})";
-    auto facts = AiFillPipeline::validatePass1Facts(wrapAsChatCompletion(inner), oneSource());
+    auto facts = AiFillPipeline::validatePass1Facts(makeChatCompletion(inner), oneSource());
     REQUIRE(facts.size() == 1);
     REQUIRE(facts[0].excerpt_ == "John Doe");
     REQUIRE(facts[0].char_start_ == 12);
@@ -53,14 +47,14 @@ TEST_CASE("validatePass1Facts: corrects via find() when offsets are wrong but ex
 TEST_CASE("validatePass1Facts: drops fact when excerpt not in source",
           "[adapters.ai][pass1][fill-07]") {
     const std::string inner = R"({"facts":[{"source_index":0,"char_start":0,"char_end":10,"excerpt":"Jane Smith","summary":"name"}]})";
-    auto facts = AiFillPipeline::validatePass1Facts(wrapAsChatCompletion(inner), oneSource());
+    auto facts = AiFillPipeline::validatePass1Facts(makeChatCompletion(inner), oneSource());
     REQUIRE(facts.empty());
 }
 
 TEST_CASE("validatePass1Facts: drops fact with out-of-range source_index",
           "[adapters.ai][pass1][fill-07]") {
     const std::string inner = R"({"facts":[{"source_index":5,"char_start":12,"char_end":20,"excerpt":"John Doe","summary":"name"}]})";
-    auto facts = AiFillPipeline::validatePass1Facts(wrapAsChatCompletion(inner), oneSource());
+    auto facts = AiFillPipeline::validatePass1Facts(makeChatCompletion(inner), oneSource());
     REQUIRE(facts.empty());
 }
 
@@ -84,7 +78,7 @@ TEST_CASE("validatePass1Facts: caps accepted facts at 200 (SAI-6)",
                           {"excerpt", "John Doe"}, {"summary", "name"}});
     }
     nlohmann::json inner = {{"facts", facts}};
-    auto wrapped = wrapAsChatCompletion(inner.dump());
+    auto wrapped = makeChatCompletion(inner.dump());
 
     auto result = AiFillPipeline::validatePass1Facts(wrapped, oneSource());
     REQUIRE(result.size() == 200);

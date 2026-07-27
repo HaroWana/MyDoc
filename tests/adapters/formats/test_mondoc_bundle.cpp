@@ -14,6 +14,8 @@
 #include "mondoc_bundle_reader.hpp"
 #include "mondoc_bundle_writer.hpp"
 
+#include "support/temp_files.hpp"
+
 using mondoc::adapters::formats::MondocBundleReader;
 using mondoc::adapters::formats::MondocBundleWriter;
 using mondoc::domain::Field;
@@ -25,9 +27,12 @@ using mondoc::domain::Template;
 
 namespace {
 
+// Collision-safe: the suffix stays for debuggability, but the shared
+// uniqueTempPath appends a random/steady_clock tag so repeated runs (or a
+// stale file left by a crashed prior run) never collide.
 std::filesystem::path tempBundlePath(const std::string& suffix) {
-    return std::filesystem::temp_directory_path()
-           / ("mondoc_test_bundle_" + suffix + ".mondoc");
+    return mondoc::tests_support::uniqueTempPath(
+        "mondoc_test_bundle_" + suffix + "_", ".mondoc");
 }
 
 struct TempSourceFile {
@@ -43,14 +48,7 @@ struct TempSourceFile {
     }
 };
 
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-    }
-};
+using mondoc::tests_support::TempFile;
 
 }  // namespace
 

@@ -2,12 +2,11 @@
 
 #include "llm_config.hpp"
 
-#include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <random>
 #include <string>
-#include <utility>
+
+#include "support/temp_files.hpp"
 
 #if !defined(_WIN32)
 #include <unistd.h>
@@ -18,31 +17,11 @@ using namespace mondoc::adapters::ai;
 namespace {
 
 std::filesystem::path uniqueTempPath(const std::string& ext) {
-    static std::mt19937_64 rng{std::random_device{}()};
-    auto suffix = std::to_string(rng()) + "_" +
-                  std::to_string(std::chrono::steady_clock::now()
-                                     .time_since_epoch().count());
-    auto path = std::filesystem::temp_directory_path()
-                / ("mondoc_test_llm_config_" + suffix + ext);
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
-    return path;
+    return mondoc::tests_support::uniqueTempPath("mondoc_test_llm_config_", ext);
 }
 
-void writeFile(const std::filesystem::path& path, const std::string& body) {
-    std::ofstream f(path, std::ios::binary);
-    REQUIRE(f.is_open());
-    f << body;
-}
-
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-    }
-};
+using mondoc::tests_support::writeFile;
+using mondoc::tests_support::TempFile;
 
 }  // namespace
 

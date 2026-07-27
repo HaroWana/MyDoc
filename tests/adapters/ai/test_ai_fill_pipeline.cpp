@@ -1,10 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
-#include <functional>
-#include <queue>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -14,17 +11,16 @@
 #include "domain/field.hpp"
 #include "domain/fill.hpp"
 #include "domain/template.hpp"
-#include "i_llm_client.hpp"
 #include "llm_config.hpp"
 #include "llm_error.hpp"
-#include "mondoc/expected.hpp"
 #include "mondoc/id.hpp"
+
+#include "support/fake_llm_client.hpp"
 
 namespace {
 
 using mondoc::adapters::ai::AiFillPipeline;
 using mondoc::adapters::ai::AiFillSourceDoc;
-using mondoc::adapters::ai::ILlmClient;
 using mondoc::adapters::ai::LlmConfig;
 using mondoc::adapters::ai::LlmError;
 using mondoc::adapters::ai::RefineInput;
@@ -37,42 +33,8 @@ using mondoc::domain::Template;
 using mondoc::FieldId;
 using mondoc::SourceDocId;
 using mondoc::TemplateId;
-
-class FakeLlmClient : public ILlmClient {
-public:
-    std::queue<mondoc::expected<std::string, LlmError>> responses_;
-    std::vector<std::string> chatCalls_;
-    std::function<void()> onAfterCall_;
-
-    void enqueueOk(std::string body) {
-        responses_.emplace(std::move(body));
-    }
-    void enqueueErr(LlmError e) {
-        responses_.emplace(mondoc::unexpected<LlmError>(std::move(e)));
-    }
-
-    mondoc::expected<std::string, LlmError>
-    chat(const std::string& body, const std::atomic<bool>* /*cancelled*/) override {
-        chatCalls_.push_back(body);
-        if (responses_.empty()) {
-            if (onAfterCall_) onAfterCall_();
-            return mondoc::unexpected<LlmError>(LlmError::unreachable("fake exhausted"));
-        }
-        auto r = std::move(responses_.front());
-        responses_.pop();
-        if (onAfterCall_) onAfterCall_();
-        return r;
-    }
-};
-
-std::string makeChatCompletion(const nlohmann::json& contentJson) {
-    nlohmann::json envelope = {
-        {"choices", nlohmann::json::array({
-            nlohmann::json{{"message", nlohmann::json{{"content", contentJson.dump()}}}}
-        })}
-    };
-    return envelope.dump();
-}
+using mondoc::tests_support::FakeLlmClient;
+using mondoc::tests_support::makeChatCompletion;
 
 Template threeFieldTemplate() {
     Template tpl;

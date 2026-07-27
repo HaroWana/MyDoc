@@ -7,10 +7,11 @@
 #include "mondoc/error.hpp"
 #include "mondoc/id.hpp"
 
+#include "support/temp_files.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <map>
 #include <random>
 #include <string>
@@ -68,19 +69,10 @@ private:
 };
 
 std::filesystem::path uniqueTempPath(const std::string& ext) {
-    static std::mt19937_64 rng{std::random_device{}()};
-    auto suffix = std::to_string(rng()) + "_" +
-                  std::to_string(std::chrono::steady_clock::now()
-                                     .time_since_epoch().count());
-    return std::filesystem::temp_directory_path()
-           / ("mondoc_test_ei_" + suffix + ext);
+    return mondoc::tests_support::uniqueTempPath("mondoc_test_ei_", ext);
 }
 
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() { std::error_code ec; std::filesystem::remove(path, ec); }
-};
+using mondoc::tests_support::TempFile;
 
 // Fixture data dir for TemplateService's injected dataDir_ (DSA-7).
 struct TempDir {
@@ -122,7 +114,7 @@ Template makeTemplate(const std::string& id, const std::string& name,
 
 TEST_CASE("TemplateService::exportTemplate: produces a non-empty .mondoc file [phase05][services.template_export_import]") {
     TempFile src{uniqueTempPath(".txt")};
-    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+    mondoc::tests_support::writeFile(src.path, "Hello {{placeholder_one}}");
 
     FakeRepository repo;
     TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
@@ -140,7 +132,7 @@ TEST_CASE("TemplateService::exportTemplate: produces a non-empty .mondoc file [p
 
 TEST_CASE("TemplateService::importTemplate: round-trip preserves name and field count [phase05][services.template_export_import]") {
     TempFile src{uniqueTempPath(".txt")};
-    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+    mondoc::tests_support::writeFile(src.path, "Hello {{placeholder_one}}");
 
     FakeRepository repo;
     TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
@@ -162,7 +154,7 @@ TEST_CASE("TemplateService::importTemplate: round-trip preserves name and field 
 
 TEST_CASE("TemplateService::importTemplate: name collision returns Error::conflict carrying the name [phase05][services.template_export_import]") {
     TempFile src{uniqueTempPath(".txt")};
-    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+    mondoc::tests_support::writeFile(src.path, "Hello {{placeholder_one}}");
 
     FakeRepository repo;
     TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
@@ -182,7 +174,7 @@ TEST_CASE("TemplateService::importTemplate: name collision returns Error::confli
 
 TEST_CASE("TemplateService::importTemplate: overwrite=true replaces existing template [phase05][services.template_export_import]") {
     TempFile src{uniqueTempPath(".txt")};
-    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+    mondoc::tests_support::writeFile(src.path, "Hello {{placeholder_one}}");
 
     FakeRepository repo;
     TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
@@ -206,7 +198,7 @@ TEST_CASE("TemplateService::importTemplate: overwrite=true replaces existing tem
 
 TEST_CASE("TemplateService::importTemplate: importAsCopy=true creates renamed copy [phase05][services.template_export_import]") {
     TempFile src{uniqueTempPath(".txt")};
-    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+    mondoc::tests_support::writeFile(src.path, "Hello {{placeholder_one}}");
 
     FakeRepository repo;
     TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
@@ -228,7 +220,7 @@ TEST_CASE("TemplateService::importTemplate: importAsCopy=true creates renamed co
 
 TEST_CASE("TemplateService::importTemplate: importAsCopy=true preserves the original template [phase05][services.template_export_import]") {
     TempFile src{uniqueTempPath(".txt")};
-    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+    mondoc::tests_support::writeFile(src.path, "Hello {{placeholder_one}}");
 
     FakeRepository repo;
     TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
@@ -269,7 +261,7 @@ TEST_CASE("TemplateService::importTemplate: importAsCopy=true preserves the orig
 
 TEST_CASE("TemplateService::importTemplate: imported source lands under the injected data dir, not temp [services.template_export_import]") {
     TempFile src{uniqueTempPath(".txt")};
-    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+    mondoc::tests_support::writeFile(src.path, "Hello {{placeholder_one}}");
 
     FakeRepository repo;
     TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_data_")};
@@ -297,7 +289,7 @@ TEST_CASE("TemplateService::importTemplate: fails cleanly when source extraction
     }
 
     TempFile src{uniqueTempPath(".txt")};
-    { std::ofstream f(src.path); f << "Hello {{placeholder_one}}"; }
+    mondoc::tests_support::writeFile(src.path, "Hello {{placeholder_one}}");
 
     FakeRepository repo;
     TempDir dataDir{uniqueTempDirPath("mondoc_test_ei_nowrite_")};

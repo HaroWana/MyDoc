@@ -1,15 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <zip.h>
-
 #include <atomic>
-#include <chrono>
 #include <filesystem>
-#include <fstream>
-#include <functional>
 #include <map>
-#include <queue>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,7 +11,6 @@
 
 #include "ai_fill_pipeline.hpp"
 #include "fill_session_service.hpp"
-#include "i_llm_client.hpp"
 #include "llm_config.hpp"
 #include "llm_error.hpp"
 #include "domain/field.hpp"
@@ -30,6 +22,10 @@
 #include "domain/template.hpp"
 #include "mondoc/error.hpp"
 #include "mondoc/id.hpp"
+
+#include "support/fake_llm_client.hpp"
+#include "support/temp_files.hpp"
+#include "support/zip_fixtures.hpp"
 
 using mondoc::FieldId;
 using mondoc::FillSessionId;
@@ -45,7 +41,6 @@ using mondoc::domain::IFillSessionRepository;
 using mondoc::domain::ITemplateRepository;
 using mondoc::domain::Template;
 using mondoc::adapters::ai::AiFillPipeline;
-using mondoc::adapters::ai::ILlmClient;
 using mondoc::adapters::ai::LlmConfig;
 using mondoc::adapters::ai::LlmError;
 using mondoc::services::AiExtractedFact;
@@ -54,6 +49,8 @@ using mondoc::services::AiFillSourceInput;
 using mondoc::services::classifyAiFailure;
 using mondoc::services::ExportFormat;
 using mondoc::services::FillSessionService;
+using mondoc::tests_support::FakeLlmClient;
+using mondoc::tests_support::makeChatCompletion;
 
 namespace {
 
@@ -237,38 +234,12 @@ public:
 };
 
 std::filesystem::path uniqueTempPath(const std::string& ext) {
-    static std::mt19937_64 rng{std::random_device{}()};
-    auto suffix = std::to_string(rng()) + "_" +
-                  std::to_string(std::chrono::steady_clock::now()
-                                     .time_since_epoch().count());
-    auto path = std::filesystem::temp_directory_path()
-                / ("mondoc_test_fillsvc_" + suffix + ext);
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
-    return path;
+    return mondoc::tests_support::uniqueTempPath("mondoc_test_fillsvc_", ext);
 }
 
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-    }
-};
-
-void writeFile(const std::filesystem::path& p, const std::string& body) {
-    std::ofstream f(p, std::ios::binary);
-    REQUIRE(f.is_open());
-    f << body;
-}
-
-std::string readFile(const std::filesystem::path& p) {
-    std::ifstream in(p, std::ios::binary);
-    REQUIRE(in.is_open());
-    return std::string{std::istreambuf_iterator<char>{in},
-                       std::istreambuf_iterator<char>{}};
-}
+using mondoc::tests_support::TempFile;
+using mondoc::tests_support::writeFile;
+using mondoc::tests_support::readFile;
 
 Template makeTpl(const std::filesystem::path& src,
                  std::vector<Field> fields,
@@ -294,40 +265,6 @@ FillSession makeSession(const std::string& id,
     s.created_at_unix_ = 1;
     s.updated_at_unix_ = 1;
     return s;
-}
-
-class FakeLlmClient : public ILlmClient {
-public:
-    std::queue<mondoc::expected<std::string, LlmError>> responses_;
-    std::vector<std::string> chatCalls_;
-    std::function<void()> onAfterCall_;
-
-    void enqueueOk(std::string body) { responses_.emplace(std::move(body)); }
-    void enqueueErr(LlmError e) {
-        responses_.emplace(mondoc::unexpected<LlmError>(std::move(e)));
-    }
-
-    mondoc::expected<std::string, LlmError>
-    chat(const std::string& body, const std::atomic<bool>* /*cancelled*/) override {
-        chatCalls_.push_back(body);
-        if (responses_.empty()) {
-            if (onAfterCall_) onAfterCall_();
-            return mondoc::unexpected<LlmError>(LlmError::unreachable("fake exhausted"));
-        }
-        auto r = std::move(responses_.front());
-        responses_.pop();
-        if (onAfterCall_) onAfterCall_();
-        return r;
-    }
-};
-
-std::string makeChatCompletion(const nlohmann::json& contentJson) {
-    nlohmann::json envelope = {
-        {"choices", nlohmann::json::array({
-            nlohmann::json{{"message", nlohmann::json{{"content", contentJson.dump()}}}}
-        })}
-    };
-    return envelope.dump();
 }
 
 LlmConfig minimalConfig() {
@@ -559,19 +496,11 @@ TEST_CASE("FillSessionService: readSourceText returns body for .md",
 TEST_CASE("[TST-6] FillSessionService: readSourceText returns body for .docx",
           "[services.fill_session]") {
     TempFile src{uniqueTempPath(".docx")};
-    {
-        constexpr std::string_view documentXml = R"XML(<?xml version="1.0"?>
+    constexpr std::string_view documentXml = R"XML(<?xml version="1.0"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body><w:p><w:r><w:t>docx body text</w:t></w:r></w:p></w:body>
 </w:document>)XML";
-        int err = 0;
-        zip_t* zf = zip_open(src.path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
-        REQUIRE(zf != nullptr);
-        auto* buf = zip_source_buffer(zf, documentXml.data(), documentXml.size(), 0);
-        REQUIRE(buf != nullptr);
-        REQUIRE(zip_file_add(zf, "word/document.xml", buf, ZIP_FL_OVERWRITE) >= 0);
-        REQUIRE(zip_close(zf) == 0);
-    }
+    mondoc::tests_support::writeMinimalDocx(src.path, documentXml);
 
     FakeFillRepo fillRepo;
     FakeTemplateRepo tplRepo;
@@ -1018,8 +947,7 @@ TEST_CASE("FillSessionService::refineField: does not clear refs when the write w
 TEST_CASE("[FILL-03] FillSessionService::readSourceText: accepts .odt source",
           "[services.fill_session]") {
     TempFile tmp{uniqueTempPath(".odt")};
-    {
-        constexpr std::string_view minimalOdt = R"XML(<?xml version="1.0"?>
+    constexpr std::string_view minimalOdt = R"XML(<?xml version="1.0"?>
 <office:document-content
     xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
     xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
@@ -1027,14 +955,7 @@ TEST_CASE("[FILL-03] FillSessionService::readSourceText: accepts .odt source",
     <text:p>Hello world</text:p>
   </office:text></office:body>
 </office:document-content>)XML";
-        int err = 0;
-        zip_t* zf = zip_open(tmp.path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
-        REQUIRE(zf != nullptr);
-        auto* src = zip_source_buffer(zf, minimalOdt.data(), minimalOdt.size(), 0);
-        REQUIRE(src != nullptr);
-        REQUIRE(zip_file_add(zf, "content.xml", src, ZIP_FL_OVERWRITE) >= 0);
-        REQUIRE(zip_close(zf) == 0);
-    }
+    mondoc::tests_support::writeMinimalOdt(tmp.path, minimalOdt);
 
     FakeFillRepo fillRepo;
     FakeTemplateRepo tplRepo;
@@ -1048,10 +969,7 @@ TEST_CASE("[FILL-03] FillSessionService::readSourceText: accepts .odt source",
 TEST_CASE("[FILL-04] FillSessionService::readSourceText: replaces invalidArgument stub for .pdf",
           "[services.fill_session]") {
     TempFile tmp{uniqueTempPath(".pdf")};
-    {
-        std::ofstream out(tmp.path, std::ios::binary);
-        out << "not a valid PDF";
-    }
+    writeFile(tmp.path, "not a valid PDF");
 
     FakeFillRepo fillRepo;
     FakeTemplateRepo tplRepo;

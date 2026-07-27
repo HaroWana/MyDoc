@@ -1,63 +1,63 @@
 add_executable(tests_adapters_formats_docx test_docx_reader.cpp)
 target_link_libraries(tests_adapters_formats_docx
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.docx COMMAND tests_adapters_formats_docx)
 
 add_executable(tests_adapters_formats_plain_text test_plain_text_reader.cpp)
 target_link_libraries(tests_adapters_formats_plain_text
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.plain_text COMMAND tests_adapters_formats_plain_text)
 
 add_executable(tests_adapters_formats_docx_writer test_docx_document_writer.cpp)
 target_link_libraries(tests_adapters_formats_docx_writer
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.docx_writer COMMAND tests_adapters_formats_docx_writer)
 set_tests_properties(formats.docx_writer PROPERTIES LABELS phase02)
 
 add_executable(tests_adapters_formats_pdf_writer test_pdf_document_writer.cpp)
 target_link_libraries(tests_adapters_formats_pdf_writer
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.pdf_writer COMMAND tests_adapters_formats_pdf_writer)
 set_tests_properties(formats.pdf_writer PROPERTIES LABELS phase02)
 
 add_executable(tests_adapters_formats_text_writer test_text_document_writer.cpp)
 target_link_libraries(tests_adapters_formats_text_writer
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.text_writer COMMAND tests_adapters_formats_text_writer)
 set_tests_properties(formats.text_writer PROPERTIES LABELS phase02)
 
 add_executable(tests_adapters_formats_odt_reader test_odt_document_reader.cpp)
 target_link_libraries(tests_adapters_formats_odt_reader
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.odt_reader COMMAND tests_adapters_formats_odt_reader)
 set_tests_properties(formats.odt_reader PROPERTIES LABELS phase04)
 
 add_executable(tests_adapters_formats_pdf_reader test_pdf_document_reader.cpp)
 target_link_libraries(tests_adapters_formats_pdf_reader
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.pdf_reader COMMAND tests_adapters_formats_pdf_reader)
 set_tests_properties(formats.pdf_reader PROPERTIES LABELS phase04)
 
 add_executable(tests_adapters_formats_odt_writer test_odt_document_writer.cpp)
 target_link_libraries(tests_adapters_formats_odt_writer
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.odt_writer COMMAND tests_adapters_formats_odt_writer)
 set_tests_properties(formats.odt_writer PROPERTIES LABELS phase04)
 
 add_executable(tests_adapters_formats_mondoc_bundle test_mondoc_bundle.cpp)
 target_link_libraries(tests_adapters_formats_mondoc_bundle
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.mondoc_bundle COMMAND tests_adapters_formats_mondoc_bundle)
 set_tests_properties(formats.mondoc_bundle PROPERTIES LABELS phase05)
 
 add_executable(tests_adapters_formats_zip_util test_zip_util.cpp)
 target_link_libraries(tests_adapters_formats_zip_util
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.zip_util COMMAND tests_adapters_formats_zip_util)
 set_tests_properties(formats.zip_util PROPERTIES LABELS phase04)
 
 add_executable(tests_adapters_formats_plain_text_extractor test_plain_text_extractor.cpp)
 target_link_libraries(tests_adapters_formats_plain_text_extractor
-    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.plain_text_extractor COMMAND tests_adapters_formats_plain_text_extractor)
 set_tests_properties(formats.plain_text_extractor PROPERTIES LABELS phase04)

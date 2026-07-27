@@ -1,17 +1,16 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <zip.h>
-
 #include "docx_document_reader.hpp"
 #include "domain/field.hpp"
 #include "domain/template.hpp"
 
 #include <cstdio>
 #include <filesystem>
-#include <fstream>
-#include <random>
 #include <string>
 #include <string_view>
+
+#include "support/temp_files.hpp"
+#include "support/zip_fixtures.hpp"
 
 using namespace mondoc::adapters::formats;
 using mondoc::domain::FieldType;
@@ -29,44 +28,20 @@ constexpr std::string_view kContentTypesXml = R"XML(<?xml version="1.0" encoding
 )XML";
 
 std::filesystem::path uniqueTempDocxPath() {
-    static std::mt19937_64 rng{std::random_device{}()};
-    auto suffix = std::to_string(rng());
-    auto path = std::filesystem::temp_directory_path()
-                / ("mondoc_test_" + suffix + ".docx");
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
-    return path;
+    return mondoc::tests_support::uniqueTempPath("mondoc_test_", ".docx");
 }
 
 // Build a real ZIP archive at `path` containing [Content_Types].xml and
 // word/document.xml — enough for the reader to treat it as a DOCX.
 void writeMinimalDocx(const std::filesystem::path& path,
                       std::string_view documentXml) {
-    int err = 0;
-    zip_t* zf = zip_open(path.string().c_str(),
-                         ZIP_CREATE | ZIP_TRUNCATE, &err);
-    REQUIRE(zf != nullptr);
-
-    auto addEntry = [&](const char* name, std::string_view body) {
-        zip_source_t* src = zip_source_buffer(zf, body.data(), body.size(), 0);
-        REQUIRE(src != nullptr);
-        REQUIRE(zip_file_add(zf, name, src, ZIP_FL_OVERWRITE) >= 0);
-    };
-
-    addEntry("[Content_Types].xml", kContentTypesXml);
-    addEntry("word/document.xml",  documentXml);
-
-    REQUIRE(zip_close(zf) == 0);
+    mondoc::tests_support::writeZipEntries(path, {
+        {"[Content_Types].xml", kContentTypesXml},
+        {"word/document.xml",   documentXml},
+    });
 }
 
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-    }
-};
+using mondoc::tests_support::TempFile;
 
 }  // namespace
 
@@ -81,10 +56,7 @@ TEST_CASE("DocxDocumentReader: rejects non-.docx extension",
 TEST_CASE("DocxDocumentReader: returns error for corrupted ZIP",
           "[formats.docx]") {
     TempFile tmp{uniqueTempDocxPath()};
-    {
-        std::ofstream os(tmp.path, std::ios::binary);
-        os << "this is not a zip file at all";
-    }
+    mondoc::tests_support::writeFile(tmp.path, "this is not a zip file at all");
 
     DocxDocumentReader reader;
     auto result = reader.read(tmp.path);

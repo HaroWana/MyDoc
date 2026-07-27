@@ -1,52 +1,25 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <zip.h>
-
 #include "plain_text_extractor.hpp"
 #include "mondoc/error.hpp"
 
 #include <filesystem>
-#include <fstream>
-#include <random>
 #include <string>
 #include <string_view>
+
+#include "support/temp_files.hpp"
+#include "support/zip_fixtures.hpp"
 
 using mondoc::adapters::formats::extractPlainText;
 
 namespace {
 
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() { std::error_code ec; std::filesystem::remove(path, ec); }
-};
+using mondoc::tests_support::TempFile;
+using mondoc::tests_support::writeMinimalOdt;
+using mondoc::tests_support::writeMinimalDocx;
 
 std::filesystem::path uniqueTempPath(const std::string& suffix) {
-    static std::mt19937_64 rng{std::random_device{}()};
-    auto id = std::to_string(rng());
-    return std::filesystem::temp_directory_path() / ("mondoc_test_" + id + suffix);
-}
-
-void writeMinimalOdt(const std::filesystem::path& path,
-                     std::string_view contentXml) {
-    int err = 0;
-    zip_t* zf = zip_open(path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
-    REQUIRE(zf != nullptr);
-    zip_source_t* src = zip_source_buffer(zf, contentXml.data(), contentXml.size(), 0);
-    REQUIRE(src != nullptr);
-    REQUIRE(zip_file_add(zf, "content.xml", src, ZIP_FL_OVERWRITE) >= 0);
-    REQUIRE(zip_close(zf) == 0);
-}
-
-void writeMinimalDocx(const std::filesystem::path& path,
-                      std::string_view documentXml) {
-    int err = 0;
-    zip_t* zf = zip_open(path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
-    REQUIRE(zf != nullptr);
-    zip_source_t* src = zip_source_buffer(zf, documentXml.data(), documentXml.size(), 0);
-    REQUIRE(src != nullptr);
-    REQUIRE(zip_file_add(zf, "word/document.xml", src, ZIP_FL_OVERWRITE) >= 0);
-    REQUIRE(zip_close(zf) == 0);
+    return mondoc::tests_support::uniqueTempPath("mondoc_test_", suffix);
 }
 
 constexpr std::string_view kOdtSpanXml = R"XML(<?xml version="1.0"?>
@@ -109,10 +82,7 @@ TEST_CASE("extractPlainText: DOCX returns w:t text with paragraph breaks",
 TEST_CASE("extractPlainText: reads .txt and .md verbatim",
           "[formats.plain_text_extractor]") {
     TempFile tmp{uniqueTempPath(".md")};
-    {
-        std::ofstream out(tmp.path, std::ios::binary);
-        out << "# Heading\nbody";
-    }
+    mondoc::tests_support::writeFile(tmp.path, "# Heading\nbody");
 
     auto r = extractPlainText(tmp.path);
 
@@ -131,10 +101,7 @@ TEST_CASE("extractPlainText: extraction errors are surfaced",
 TEST_CASE("extractPlainText: corrupt zip returns an error",
           "[formats.plain_text_extractor]") {
     TempFile tmp{uniqueTempPath(".docx")};
-    {
-        std::ofstream out(tmp.path, std::ios::binary);
-        out << "not a zip file at all";
-    }
+    mondoc::tests_support::writeFile(tmp.path, "not a zip file at all");
 
     CHECK_FALSE(extractPlainText(tmp.path).has_value());
 }

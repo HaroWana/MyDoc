@@ -5,10 +5,7 @@
 #include <sys/resource.h>
 #endif
 
-#include <chrono>
 #include <filesystem>
-#include <fstream>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,6 +14,8 @@
 #include "domain/field.hpp"
 #include "domain/fill.hpp"
 #include "domain/template.hpp"
+
+#include "support/temp_files.hpp"
 
 using mondoc::FieldId;
 using mondoc::TemplateId;
@@ -29,30 +28,12 @@ using mondoc::domain::Template;
 namespace {
 
 std::filesystem::path uniqueTempPath(const std::string& ext) {
-    static std::mt19937_64 rng{std::random_device{}()};
-    auto suffix = std::to_string(rng()) + "_" +
-                  std::to_string(std::chrono::steady_clock::now()
-                                     .time_since_epoch().count());
-    return std::filesystem::temp_directory_path()
-        / ("mondoc_test_textw_" + suffix + ext);
+    return mondoc::tests_support::uniqueTempPath("mondoc_test_textw_", ext);
 }
 
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() { std::error_code ec; std::filesystem::remove(path, ec); }
-};
-
-void writeFile(const std::filesystem::path& p, const std::string& body) {
-    std::ofstream f(p, std::ios::binary);
-    f << body;
-}
-
-std::string readFile(const std::filesystem::path& p) {
-    std::ifstream in(p, std::ios::binary);
-    return std::string{std::istreambuf_iterator<char>{in},
-                       std::istreambuf_iterator<char>{}};
-}
+using mondoc::tests_support::TempFile;
+using mondoc::tests_support::writeFile;
+using mondoc::tests_support::readFile;
 
 Template makeTpl(const std::filesystem::path& src,
                  std::vector<Field> fields,

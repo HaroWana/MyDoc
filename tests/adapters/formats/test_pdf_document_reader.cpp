@@ -4,24 +4,19 @@
 #include "mondoc/error.hpp"
 
 #include <filesystem>
-#include <fstream>
-#include <random>
 #include <string>
+
+#include "support/temp_files.hpp"
 
 using namespace mondoc::adapters::formats;
 
 namespace {
 
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() { std::error_code ec; std::filesystem::remove(path, ec); }
-};
+using mondoc::tests_support::TempFile;
+using mondoc::tests_support::writeFile;
 
 std::filesystem::path uniqueTempPath(const std::string& suffix) {
-    static std::mt19937_64 rng{std::random_device{}()};
-    auto id = std::to_string(rng());
-    return std::filesystem::temp_directory_path() / ("mondoc_test_" + id + suffix);
+    return mondoc::tests_support::uniqueTempPath("mondoc_test_", suffix);
 }
 
 }  // namespace
@@ -37,10 +32,7 @@ TEST_CASE("[TMPL-03] PdfDocumentReader: rejects file with wrong extension",
 TEST_CASE("[TMPL-03] PdfDocumentReader: returns error for corrupt file",
           "[formats.pdf_reader]") {
     TempFile tmp{uniqueTempPath(".pdf")};
-    {
-        std::ofstream out(tmp.path, std::ios::binary);
-        out << "not a PDF file at all\x00\x01\x02";
-    }
+    writeFile(tmp.path, "not a PDF file at all\x00\x01\x02");
     PdfDocumentReader reader;
     auto result = reader.read(tmp.path);
     REQUIRE_FALSE(result.has_value());
@@ -49,10 +41,7 @@ TEST_CASE("[TMPL-03] PdfDocumentReader: returns error for corrupt file",
 TEST_CASE("PdfDocumentReader: rejects file larger than 50MB",
           "[formats.pdf_reader]") {
     TempFile tmp{uniqueTempPath(".pdf")};
-    {
-        std::ofstream out(tmp.path, std::ios::binary);
-        out << "%PDF-1.4\n";
-    }
+    writeFile(tmp.path, "%PDF-1.4\n");
     std::error_code resizeEc;
     std::filesystem::resize_file(tmp.path, 51ULL * 1024 * 1024, resizeEc);
     REQUIRE_FALSE(resizeEc);

@@ -7,10 +7,12 @@
 #include "domain/fill.hpp"
 #include "domain/template.hpp"
 
+#include "support/temp_files.hpp"
+#include "support/zip_fixtures.hpp"
+
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -38,33 +40,17 @@ constexpr std::string_view kRootRelsXml = R"XML(<?xml version="1.0" encoding="UT
 )XML";
 
 std::filesystem::path uniqueTempPath(std::string_view label) {
-    static std::mt19937_64 rng{std::random_device{}()};
-    auto suffix = std::to_string(rng());
-    auto path = std::filesystem::temp_directory_path()
-                / (std::string{"mondoc_writer_"} + std::string{label} + "_" + suffix + ".docx");
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
-    return path;
+    return mondoc::tests_support::uniqueTempPath(
+        "mondoc_writer_" + std::string{label} + "_", ".docx");
 }
 
 void writeMinimalDocx(const std::filesystem::path& path,
                       std::string_view documentXml) {
-    int err = 0;
-    zip_t* zf = zip_open(path.string().c_str(),
-                         ZIP_CREATE | ZIP_TRUNCATE, &err);
-    REQUIRE(zf != nullptr);
-
-    auto addEntry = [&](const char* name, std::string_view body) {
-        zip_source_t* src = zip_source_buffer(zf, body.data(), body.size(), 0);
-        REQUIRE(src != nullptr);
-        REQUIRE(zip_file_add(zf, name, src, ZIP_FL_OVERWRITE) >= 0);
-    };
-
-    addEntry("[Content_Types].xml", kContentTypesXml);
-    addEntry("_rels/.rels",         kRootRelsXml);
-    addEntry("word/document.xml",   documentXml);
-
-    REQUIRE(zip_close(zf) == 0);
+    mondoc::tests_support::writeZipEntries(path, {
+        {"[Content_Types].xml", kContentTypesXml},
+        {"_rels/.rels",         kRootRelsXml},
+        {"word/document.xml",   documentXml},
+    });
 }
 
 std::vector<unsigned char> readAllBytes(const std::filesystem::path& path) {
@@ -100,14 +86,7 @@ std::string readDocumentXmlFrom(const std::filesystem::path& path) {
     return xml;
 }
 
-struct TempFile {
-    std::filesystem::path path;
-    explicit TempFile(std::filesystem::path p) : path(std::move(p)) {}
-    ~TempFile() {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-    }
-};
+using mondoc::tests_support::TempFile;
 
 }  // namespace
 
