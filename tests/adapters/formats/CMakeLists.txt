@@ -49,3 +49,8 @@ target_link_libraries(tests_adapters_formats_mondoc_bundle
     PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
 add_test(NAME formats.mondoc_bundle COMMAND tests_adapters_formats_mondoc_bundle)
 set_tests_properties(formats.mondoc_bundle PROPERTIES LABELS phase05)
+
+add_executable(tests_adapters_formats_zip_util test_zip_util.cpp)
+target_link_libraries(tests_adapters_formats_zip_util
+    PRIVATE mondoc_adapters_formats Catch2::Catch2WithMain)
+add_test(NAME formats.zip_util COMMAND tests_adapters_formats_zip_util)

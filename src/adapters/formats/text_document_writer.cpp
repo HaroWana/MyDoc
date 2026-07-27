@@ -1,7 +1,7 @@
 #include "text_document_writer.hpp"
 
-#include <algorithm>
-#include <cctype>
+#include "detail/placeholders.hpp"
+
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -19,21 +19,7 @@ namespace {
 
 constexpr std::uintmax_t kMaxFileBytes = 50ULL * 1024 * 1024;
 
-std::string normalize(std::string_view raw) {
-    std::string s{raw};
-    auto first = s.find_first_not_of(" \t\r\n");
-    auto last  = s.find_last_not_of(" \t\r\n");
-    if (first == std::string::npos) return {};
-    s = s.substr(first, last - first + 1);
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    std::replace(s.begin(), s.end(), ' ', '_');
-    return s;
-}
-
-static const std::regex kDoubleBrace{R"(\{\{\s*([A-Za-z_][A-Za-z0-9_ ]*?)\s*\}\})"};
-static const std::regex kSquareBracket{R"(\[([A-Za-z_][A-Za-z0-9_ ]+?)\])"};
-static const std::regex kAngleBracket{R"(<([A-Za-z_][A-Za-z0-9_ ]+?)>)"};
+using detail::normalize;
 
 std::unordered_map<std::string, std::string>
 fillsByName(const mondoc::domain::Template& tpl,
@@ -98,9 +84,9 @@ TextDocumentWriter::write(const mondoc::domain::Template& tpl,
                         std::istreambuf_iterator<char>{}};
 
     const auto byName = fillsByName(tpl, fills);
-    content = substituteOne(std::move(content), kDoubleBrace,   byName);
-    content = substituteOne(std::move(content), kSquareBracket, byName);
-    content = substituteOne(std::move(content), kAngleBracket,  byName);
+    content = substituteOne(std::move(content), detail::PlaceholderPatterns::kDoubleBrace,   byName);
+    content = substituteOne(std::move(content), detail::PlaceholderPatterns::kSquareBracket, byName);
+    content = substituteOne(std::move(content), detail::PlaceholderPatterns::kAngleBracket,  byName);
 
     std::ofstream of(dest, std::ios::binary | std::ios::trunc);
     if (!of) {

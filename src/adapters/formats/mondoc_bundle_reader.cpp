@@ -1,12 +1,11 @@
 #include "mondoc_bundle_reader.hpp"
 
+#include "detail/zip_util.hpp"
 #include "mondoc/util.hpp"
 
 #include <nlohmann/json.hpp>
 #include <zip.h>
 
-#include <algorithm>
-#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -18,7 +17,7 @@ namespace mondoc::adapters::formats {
 
 namespace {
 
-constexpr zip_uint64_t kMaxBundleBytes = 50ULL * 1024 * 1024;  // 50 MB DoS guard
+constexpr std::uint64_t kMaxBundleBytes = 50ULL * 1024 * 1024;  // 50 MB DoS guard
 
 bool isValidEntryName(const std::string& name) {
     if (name.empty()) return false;
@@ -74,54 +73,7 @@ locationFromJson(const nlohmann::json& j) {
 
 mondoc::expected<std::string, mondoc::Error>
 readManifestEntry(zip_t* zf) {
-    zip_stat_t st;
-    zip_stat_init(&st);
-    if (zip_stat(zf, "manifest.json", 0, &st) < 0) {
-        return mondoc::unexpected(mondoc::Error::generic(
-            "manifest.json not found"));
-    }
-    if ((st.valid & ZIP_STAT_SIZE) && st.size > kMaxBundleBytes) {
-        return mondoc::unexpected(mondoc::Error::generic(
-            "bundle too large (ZIP bomb guard)"));
-    }
-
-    zip_file_t* entry = zip_fopen(zf, "manifest.json", 0);
-    if (!entry) {
-        return mondoc::unexpected(mondoc::Error::generic(
-            "failed to open manifest.json"));
-    }
-
-    std::string buf;
-    if (st.valid & ZIP_STAT_SIZE) {
-        buf.resize(static_cast<std::size_t>(st.size));
-        zip_int64_t got = zip_fread(entry, buf.data(), st.size);
-        if (got < 0) {
-            zip_fclose(entry);
-            return mondoc::unexpected(mondoc::Error::generic(
-                "read error in manifest.json"));
-        }
-        buf.resize(static_cast<std::size_t>(got));
-    } else {
-        std::array<char, 64 * 1024> chunk{};
-        for (;;) {
-            zip_int64_t got = zip_fread(entry, chunk.data(), chunk.size());
-            if (got < 0) {
-                zip_fclose(entry);
-                return mondoc::unexpected(mondoc::Error::generic(
-                    "read error in manifest.json"));
-            }
-            if (got == 0) break;
-            if (buf.size() + static_cast<std::size_t>(got) > kMaxBundleBytes) {
-                zip_fclose(entry);
-                return mondoc::unexpected(mondoc::Error::generic(
-                    "bundle too large (ZIP bomb guard)"));
-            }
-            buf.append(chunk.data(), static_cast<std::size_t>(got));
-        }
-    }
-
-    zip_fclose(entry);
-    return buf;
+    return detail::readZipEntry(zf, "manifest.json", kMaxBundleBytes);
 }
 
 }  // namespace

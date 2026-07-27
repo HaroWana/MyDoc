@@ -1,16 +1,16 @@
 #include "odt_document_reader.hpp"
 
+#include "detail/placeholders.hpp"
+#include "detail/zip_util.hpp"
 #include "mondoc/util.hpp"
 
 #include <pugixml.hpp>
 #include <zip.h>
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstdint>
 #include <functional>
-#include <regex>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -21,67 +21,13 @@ namespace mondoc::adapters::formats {
 
 namespace {
 
-constexpr zip_uint64_t kMaxOdtBytes = 50ULL * 1024 * 1024;
-constexpr std::size_t  kReadChunkSize = 64 * 1024;
+constexpr std::uint64_t kMaxOdtBytes = 50ULL * 1024 * 1024;
 
-std::string normalize(std::string_view raw) {
-    std::string s{raw};
-    auto first = s.find_first_not_of(" \t\r\n");
-    auto last  = s.find_last_not_of(" \t\r\n");
-    if (first == std::string::npos) return {};
-    s = s.substr(first, last - first + 1);
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    std::replace(s.begin(), s.end(), ' ', '_');
-    return s;
-}
+using detail::normalize;
 
 mondoc::expected<std::string, mondoc::Error>
 readContentXml(zip_t* zf) {
-    zip_stat_t st;
-    zip_stat_init(&st);
-    if (zip_stat(zf, "content.xml", 0, &st) < 0) {
-        return mondoc::unexpected(
-            mondoc::Error::generic("content.xml not found"));
-    }
-
-    zip_file_t* entry = zip_fopen(zf, "content.xml", 0);
-    if (!entry) {
-        return mondoc::unexpected(
-            mondoc::Error::generic("failed to open content.xml"));
-    }
-
-    std::string xml;
-    if ((st.valid & ZIP_STAT_SIZE) && st.size <= kMaxOdtBytes) {
-        xml.resize(static_cast<std::size_t>(st.size));
-        zip_int64_t got = zip_fread(entry, xml.data(), st.size);
-        if (got < 0) {
-            zip_fclose(entry);
-            return mondoc::unexpected(
-                mondoc::Error::generic("read error in content.xml"));
-        }
-        xml.resize(static_cast<std::size_t>(got));
-    } else {
-        std::array<char, kReadChunkSize> buf{};
-        for (;;) {
-            zip_int64_t got = zip_fread(entry, buf.data(), buf.size());
-            if (got < 0) {
-                zip_fclose(entry);
-                return mondoc::unexpected(
-                    mondoc::Error::generic("read error in content.xml"));
-            }
-            if (got == 0) break;
-            if (xml.size() + static_cast<std::size_t>(got) > kMaxOdtBytes) {
-                zip_fclose(entry);
-                return mondoc::unexpected(
-                    mondoc::Error::generic("content.xml exceeds size limit"));
-            }
-            xml.append(buf.data(), static_cast<std::size_t>(got));
-        }
-    }
-
-    zip_fclose(entry);
-    return xml;
+    return detail::readZipEntry(zf, "content.xml", kMaxOdtBytes);
 }
 
 void extractFormControls(const pugi::xml_document& doc,
@@ -136,25 +82,14 @@ void extractFormControls(const pugi::xml_document& doc,
 void scanPlaceholders(const std::string& text,
                       std::vector<mondoc::domain::Field>& out,
                       std::unordered_set<std::string>& seen) {
-    static const std::regex kDoubleBrace{R"(\{\{\s*([A-Za-z_][A-Za-z0-9_ ]*?)\s*\}\})"};
-    static const std::regex kSquareBracket{R"(\[([A-Za-z_][A-Za-z0-9_ ]+?)\])"};
-    static const std::regex kAngleBracket{R"(<([A-Za-z_][A-Za-z0-9_ ]+?)>)"};
-
-    auto runOne = [&](const std::regex& re) {
-        for (auto it = std::sregex_iterator{text.begin(), text.end(), re};
-             it != std::sregex_iterator{}; ++it) {
-            std::string name = normalize((*it)[1].str());
-            if (name.empty() || !seen.insert(name).second) continue;
-            mondoc::domain::Field f;
-            f.id_   = mondoc::FieldId{generateUuid()};
-            f.name_ = std::move(name);
-            f.type_ = mondoc::domain::FieldType::Text;
-            out.push_back(std::move(f));
-        }
-    };
-    runOne(kDoubleBrace);
-    runOne(kSquareBracket);
-    runOne(kAngleBracket);
+    for (auto& name : detail::scanPlaceholders(text)) {
+        if (!seen.insert(name).second) continue;
+        mondoc::domain::Field f;
+        f.id_   = mondoc::FieldId{generateUuid()};
+        f.name_ = std::move(name);
+        f.type_ = mondoc::domain::FieldType::Text;
+        out.push_back(std::move(f));
+    }
 }
 
 void collectTextParagraphs(const pugi::xml_node& node, std::string& out) {

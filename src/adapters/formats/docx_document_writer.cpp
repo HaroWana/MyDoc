@@ -1,5 +1,7 @@
 #include "docx_document_writer.hpp"
 
+#include "detail/placeholders.hpp"
+#include "detail/zip_util.hpp"
 #include "mondoc/util.hpp"
 
 #include <pugixml.hpp>
@@ -22,67 +24,13 @@ namespace mondoc::adapters::formats {
 
 namespace {
 
-constexpr zip_uint64_t kMaxDocxBytes = 50ULL * 1024 * 1024;
-constexpr std::size_t  kReadChunkSize = 64 * 1024;
+constexpr std::uint64_t kMaxDocxBytes = 50ULL * 1024 * 1024;
 
-std::string normalize(std::string_view raw) {
-    std::string s{raw};
-    auto first = s.find_first_not_of(" \t\r\n");
-    auto last  = s.find_last_not_of(" \t\r\n");
-    if (first == std::string::npos) return {};
-    s = s.substr(first, last - first + 1);
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    std::replace(s.begin(), s.end(), ' ', '_');
-    return s;
-}
+using detail::normalize;
 
 mondoc::expected<std::string, mondoc::Error>
 readDocumentXml(zip_t* zf) {
-    zip_stat_t st;
-    zip_stat_init(&st);
-    if (zip_stat(zf, "word/document.xml", 0, &st) < 0) {
-        return mondoc::unexpected(
-            mondoc::Error::generic("word/document.xml not found"));
-    }
-
-    zip_file_t* entry = zip_fopen(zf, "word/document.xml", 0);
-    if (!entry) {
-        return mondoc::unexpected(
-            mondoc::Error::generic("failed to open word/document.xml"));
-    }
-
-    std::string xml;
-    if ((st.valid & ZIP_STAT_SIZE) && st.size <= kMaxDocxBytes) {
-        xml.resize(static_cast<std::size_t>(st.size));
-        zip_int64_t got = zip_fread(entry, xml.data(), st.size);
-        if (got < 0) {
-            zip_fclose(entry);
-            return mondoc::unexpected(
-                mondoc::Error::generic("read error in word/document.xml"));
-        }
-        xml.resize(static_cast<std::size_t>(got));
-    } else {
-        std::array<char, kReadChunkSize> buf{};
-        for (;;) {
-            zip_int64_t got = zip_fread(entry, buf.data(), buf.size());
-            if (got < 0) {
-                zip_fclose(entry);
-                return mondoc::unexpected(
-                    mondoc::Error::generic("read error in word/document.xml"));
-            }
-            if (got == 0) break;
-            if (xml.size() + static_cast<std::size_t>(got) > kMaxDocxBytes) {
-                zip_fclose(entry);
-                return mondoc::unexpected(
-                    mondoc::Error::generic("word/document.xml exceeds size limit"));
-            }
-            xml.append(buf.data(), static_cast<std::size_t>(got));
-        }
-    }
-
-    zip_fclose(entry);
-    return xml;
+    return detail::readZipEntry(zf, "word/document.xml", kMaxDocxBytes);
 }
 
 std::unordered_map<std::string, std::string>
@@ -155,9 +103,9 @@ bool hasAnyPlaceholder(const std::string& s) {
 std::string substitutePlaceholders(
     std::string text, const std::unordered_map<std::string, std::string>& byName) {
     static const std::array<std::regex, 3> kPatterns{
-        std::regex{R"(\{\{\s*([A-Za-z_][A-Za-z0-9_ ]*?)\s*\}\})"},
-        std::regex{R"(\[([A-Za-z_][A-Za-z0-9_ ]+?)\])"},
-        std::regex{R"(<([A-Za-z_][A-Za-z0-9_ ]+?)>)"}
+        detail::PlaceholderPatterns::kDoubleBrace,
+        detail::PlaceholderPatterns::kSquareBracket,
+        detail::PlaceholderPatterns::kAngleBracket
     };
     for (const auto& re : kPatterns) {
         std::string out;

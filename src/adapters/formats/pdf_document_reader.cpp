@@ -1,11 +1,10 @@
 #include "pdf_document_reader.hpp"
 
+#include "detail/placeholders.hpp"
 #include "mondoc/util.hpp"
 
 #include <podofo/podofo.h>
 
-#include <algorithm>
-#include <cctype>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -17,17 +16,7 @@ namespace mondoc::adapters::formats {
 
 namespace {
 
-std::string normalize(std::string_view raw) {
-    std::string s{raw};
-    auto first = s.find_first_not_of(" \t\r\n");
-    auto last  = s.find_last_not_of(" \t\r\n");
-    if (first == std::string::npos) return {};
-    s = s.substr(first, last - first + 1);
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    std::replace(s.begin(), s.end(), ' ', '_');
-    return s;
-}
+using detail::normalize;
 
 }  // namespace
 
