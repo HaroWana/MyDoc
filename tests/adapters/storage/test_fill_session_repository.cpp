@@ -199,6 +199,41 @@ TEST_CASE("SqliteFillSessionRepository: upsertValue first inserts, second update
     REQUIRE(value.getColumn(0).getString() == "v2");
 }
 
+TEST_CASE("SqliteFillSessionRepository: setValueManual updates value AND confidence "
+          "in one call over an AI-filled row",
+          "[storage.fill_session][dsa-4]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+    REQUIRE(repo.save(makeSession("s1")).has_value());
+    REQUIRE(repo.upsertValue(FillSessionId{"s1"}, FieldId{"f1"}, "ai guess").has_value());
+    REQUIRE(repo.upsertConfidence(FillSessionId{"s1"}, FieldId{"f1"}, Confidence::High).has_value());
+
+    REQUIRE(repo.setValueManual(FillSessionId{"s1"}, FieldId{"f1"}, "USER TYPED").has_value());
+
+    auto session = repo.findById(FillSessionId{"s1"});
+    REQUIRE(session.has_value());
+    REQUIRE(session->fills_.size() == 1);
+    REQUIRE(session->fills_[0].current_value_ == "USER TYPED");
+    REQUIRE(session->fills_[0].confidence_ == Confidence::Manual);
+}
+
+TEST_CASE("SqliteFillSessionRepository: setValueManual on a fresh row gets Manual",
+          "[storage.fill_session][dsa-4]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+    REQUIRE(repo.save(makeSession("s1")).has_value());
+
+    REQUIRE(repo.setValueManual(FillSessionId{"s1"}, FieldId{"f1"}, "typed").has_value());
+
+    auto session = repo.findById(FillSessionId{"s1"});
+    REQUIRE(session.has_value());
+    REQUIRE(session->fills_.size() == 1);
+    REQUIRE(session->fills_[0].current_value_ == "typed");
+    REQUIRE(session->fills_[0].confidence_ == Confidence::Manual);
+}
+
 TEST_CASE("SqliteFillSessionRepository: upsertValueIfNotManual writes when no row exists yet",
           "[storage.fill_session][dsa-4]") {
     auto conn = openMigratedDb();

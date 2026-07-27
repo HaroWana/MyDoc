@@ -12,7 +12,6 @@
 #include "pdf_document_writer.hpp"
 #include "plain_text_extractor.hpp"
 #include "text_document_writer.hpp"
-#include "domain/confidence.hpp"
 
 namespace mondoc::services {
 
@@ -69,12 +68,9 @@ mondoc::expected<void, mondoc::Error>
 FillSessionService::setFieldValue(const mondoc::FillSessionId& sessionId,
                                    const mondoc::FieldId& fieldId,
                                    const std::string& value) {
-    auto setVal = sessionRepo_.upsertValue(sessionId, fieldId, value);
-    if (!setVal) return mondoc::unexpected(setVal.error());
-    // A direct user edit always wins going forward: persist Manual so a
-    // field the AI filled earlier stops being eligible for AI overwrite.
-    return sessionRepo_.upsertConfidence(
-        sessionId, fieldId, mondoc::domain::Confidence::Manual);
+    // Single atomic repo call: value and Manual confidence must land together,
+    // or a concurrent AI write can observe/land in the gap between two calls.
+    return sessionRepo_.setValueManual(sessionId, fieldId, value);
 }
 
 mondoc::expected<std::vector<mondoc::domain::Fill>, mondoc::Error>

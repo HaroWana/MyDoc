@@ -321,6 +321,47 @@ SqliteFillSessionRepository::upsertValue(const mondoc::FillSessionId& sessionId,
     }
 }
 
+mondoc::expected<void, mondoc::Error>
+SqliteFillSessionRepository::setValueManual(const mondoc::FillSessionId& sessionId,
+                                             const mondoc::FieldId& fieldId,
+                                             const std::string& value) {
+    std::lock_guard<std::mutex> lock(conn_.mutex());
+    auto& db = conn_.raw();
+    try {
+        const auto now = static_cast<int64_t>(unixNowSeconds());
+
+        SQLite::Transaction tx(db);
+
+        // Single atomic statement: value and confidence='manual' are written
+        // together, so a concurrent AI write can never observe (or land in)
+        // a window where the value is the user's but the confidence is not
+        // yet Manual. A direct user edit always wins, unconditionally.
+        SQLite::Statement upsert(db,
+            "INSERT INTO fill_values(session_id, field_id, value, updated_at, confidence)"
+            " VALUES(?,?,?,?,'manual')"
+            " ON CONFLICT(session_id, field_id) DO UPDATE SET"
+            "  value=excluded.value,"
+            "  confidence='manual',"
+            "  updated_at=excluded.updated_at");
+        upsert.bind(1, sessionId.value());
+        upsert.bind(2, fieldId.value());
+        upsert.bind(3, value);
+        upsert.bind(4, now);
+        upsert.exec();
+
+        SQLite::Statement bump(db,
+            "UPDATE fill_sessions SET updated_at = ? WHERE id = ?");
+        bump.bind(1, now);
+        bump.bind(2, sessionId.value());
+        bump.exec();
+
+        tx.commit();
+        return {};
+    } catch (const SQLite::Exception& e) {
+        return mondoc::unexpected(mondoc::Error::generic(e.what()));
+    }
+}
+
 mondoc::expected<bool, mondoc::Error>
 SqliteFillSessionRepository::upsertValueIfNotManual(const mondoc::FillSessionId& sessionId,
                                                      const mondoc::FieldId& fieldId,

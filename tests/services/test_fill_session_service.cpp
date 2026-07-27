@@ -133,6 +133,34 @@ public:
         return {};
     }
 
+    // Mirrors the real SqliteFillSessionRepository::setValueManual: value and
+    // Confidence::Manual are set together in one call, so a concurrent AI
+    // write (via upsertValueIfNotManual) can never observe a state where the
+    // value changed but the confidence hasn't caught up yet (or vice versa).
+    mondoc::expected<void, mondoc::Error>
+    setValueManual(const FillSessionId& sessionId,
+                   const FieldId& fieldId,
+                   const std::string& value) override {
+        upsertCalls_.push_back({sessionId.value(), fieldId.value(), value});
+        auto it = store_.find(sessionId.value());
+        if (it == store_.end()) {
+            return mondoc::unexpected(mondoc::Error::notFound("missing session"));
+        }
+        for (auto& f : it->second.fills_) {
+            if (f.field_id_.value() == fieldId.value()) {
+                f.current_value_ = value;
+                f.confidence_    = Confidence::Manual;
+                return {};
+            }
+        }
+        Fill f;
+        f.field_id_      = fieldId;
+        f.current_value_ = value;
+        f.confidence_    = Confidence::Manual;
+        it->second.fills_.push_back(std::move(f));
+        return {};
+    }
+
     // Mirrors the real SqliteFillSessionRepository::upsertValueIfNotManual:
     // a single atomic check-and-write against whatever the field's CURRENT
     // stored state is (not a stale snapshot) — write skipped if that state

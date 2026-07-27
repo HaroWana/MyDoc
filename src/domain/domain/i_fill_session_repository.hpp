@@ -31,6 +31,15 @@ public:
                     const mondoc::FieldId& fieldId,
                     const std::string& value) = 0;
 
+    // A direct user edit: writes `value` and stamps Confidence::Manual in one
+    // atomic statement. Always wins, unconditionally, regardless of prior
+    // state — there is no separate window where value and confidence can be
+    // observed out of sync by a concurrent AI write.
+    virtual mondoc::expected<void, mondoc::Error>
+        setValueManual(const mondoc::FillSessionId& sessionId,
+                       const mondoc::FieldId& fieldId,
+                       const std::string& value) = 0;
+
     // Atomically writes `value` unless the field's CURRENT stored state is
     // Manual with a non-empty value, in which case the write is skipped.
     // Returns true if the write happened, false if it was protected.
