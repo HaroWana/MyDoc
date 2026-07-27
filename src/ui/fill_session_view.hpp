@@ -70,8 +70,8 @@ private:
     void restorePreFillSnapshot();
     std::vector<mondoc::services::AiFillSourceInput> currentSources() const;
     void showAiErrorDialog(mondoc::services::AiFailureKind kind, const QString& message);
-    void shutdownThread(QThread*& t, AiFillWorker*& worker);
-    void shutdownThread(QThread*& t);
+    void shutdownThread(QThread*& t, AiFillWorker*& worker, bool mustJoin);
+    void shutdownThread(QThread*& t, bool mustJoin);
 
     mondoc::services::FillSessionService& service_;
     mondoc::domain::ITemplateRepository& templateRepo_;

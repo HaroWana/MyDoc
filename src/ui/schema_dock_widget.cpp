@@ -235,32 +235,33 @@ SchemaDockWidget::SchemaDockWidget(QWidget* parent)
 }
 
 void SchemaDockWidget::shutdownThread(QThread*& t, AiFieldDetectWorker*& worker) {
+    // Only ever called from ~SchemaDockWidget() (there is no session-clear
+    // equivalent for this dock), so this always blocks until the thread
+    // actually exits rather than abandoning it on timeout: main.cpp destroys
+    // the CompositionRoot (and with it the AI field detector) within a few
+    // lines of destroying MainWindow, with no event-loop turn in between.
+    // Abandoning here would let this worker's non-interruptible HTTP read (up
+    // to 60s, llm_client's read timeout) keep running into an already-freed
+    // detector.
     QThread* thread = t;
     if (!thread) return;
-    if (worker) worker->requestCancel();
-    if (thread->isRunning()) {
-        thread->quit();
-        if (!thread->wait(5000)) {
-            // requestCancel() only flips a flag the worker checks between
-            // steps; it cannot interrupt an in-flight HTTP read (llm_client
-            // blocks for up to 60s inside chat()). terminate() would therefore
-            // be the expected path on every close-during-detection, and the
-            // trailing unbounded wait() could then stall the UI for that same
-            // 60s (or land the OS thread mid-syscall). Instead, detach the
-            // thread from this widget so the QObject child-cascade can never
-            // reach it, and let the existing finished->deleteLater connections
-            // reap the thread and worker once the in-flight request actually
-            // completes.
-            thread->disconnect(this);
-            thread->setParent(nullptr);
-            t = nullptr;
-            worker = nullptr;
-            return;
-        }
-    }
+
+    // Sever delivery to `this` before anything else: kills the
+    // finished->lambda that nulls aiThread_/aiWorker_ and stops the worker's
+    // own result signals (proposalsReady/failed/cancelled) from reaching
+    // this dock. Connections from the worker to the thread (finished ->
+    // thread->quit) are left intact so the thread still exits and its
+    // finished->deleteLater cleanup still runs.
+    if (worker) worker->disconnect(this);
     thread->disconnect(this);
+    if (worker) worker->requestCancel();
     t = nullptr;
     worker = nullptr;
+
+    if (!thread->isRunning()) return;
+
+    thread->quit();
+    if (!thread->wait(5000)) thread->wait();
 }
 
 SchemaDockWidget::~SchemaDockWidget() {

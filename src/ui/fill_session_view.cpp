@@ -242,62 +242,90 @@ bool FillSessionView::openSession(const mondoc::FillSessionId& id,
     return true;
 }
 
-void FillSessionView::shutdownThread(QThread*& t, AiFillWorker*& worker) {
+void FillSessionView::shutdownThread(QThread*& t, AiFillWorker*& worker, bool mustJoin) {
     QThread* thread = t;
     if (!thread) return;
-    if (worker) worker->requestCancel();
-    if (thread->isRunning()) {
-        thread->quit();
-        if (!thread->wait(5000)) {
-            // requestCancel() only flips a flag the worker checks between
-            // steps; it cannot interrupt an in-flight HTTP read (llm_client
-            // blocks for up to 60s inside chat()). terminate() would therefore
-            // be the expected path on every close-during-request, and the
-            // trailing unbounded wait() could then stall the UI for that same
-            // 60s (or land the OS thread mid-syscall). Instead, detach the
-            // thread from this widget so the QObject child-cascade can never
-            // reach it, and let the existing finished->deleteLater connections
-            // reap the thread and worker once the in-flight request actually
-            // completes.
-            thread->disconnect(this);
-            thread->setParent(nullptr);
-            t = nullptr;
-            worker = nullptr;
-            return;
-        }
-    }
+
+    // Sever delivery to `this` before anything else, on every path: this kills
+    // the finished->lambda that nulls aiThread_/aiWorker_ (which could
+    // otherwise fire late and stomp a subsequently-started thread's state)
+    // and stops the worker's own result signals (finished/failed/cancelled ->
+    // onAiFinished/onAiFailed/onAiCancelled) from reaching this view once
+    // shutdown has begun. Connections from the worker to the thread (e.g.
+    // finished -> thread->quit) are left intact so an abandoned thread still
+    // exits and its finished->deleteLater cleanup still runs.
+    if (worker) worker->disconnect(this);
     thread->disconnect(this);
+    if (worker) worker->requestCancel();
     t = nullptr;
     worker = nullptr;
+
+    if (!thread->isRunning()) return;
+
+    thread->quit();
+    if (thread->wait(5000)) return;
+
+    if (mustJoin) {
+        // Called from ~FillSessionView(): main.cpp destroys the
+        // CompositionRoot (and with it FillSessionService/the repositories)
+        // within a few lines of destroying MainWindow, with no event-loop
+        // turn in between. Abandoning here would let this worker's
+        // non-interruptible HTTP read (up to 60s, llm_client's read timeout)
+        // keep running into already-freed services. Block until the OS
+        // thread actually exits instead — this is the price of
+        // requestCancel() being unable to interrupt an in-flight read.
+        thread->wait();
+        return;
+    }
+
+    // Session-clear mode: the CompositionRoot/services outlive this view for
+    // the rest of the app's life, and delivery to `this` is already severed
+    // above, so it is safe to detach and let the abandoned thread finish on
+    // its own time. requestCancel() cannot interrupt an in-flight HTTP read,
+    // so terminate() would be the expected path on every close-during-request
+    // and could hang the UI for up to that same 60s (or land the OS thread
+    // mid-syscall on some platforms). Detach instead: unparent so the
+    // QObject child-cascade can't reach a running thread, and let the
+    // existing worker->finished -> thread->quit and thread->finished ->
+    // deleteLater connections reap both objects once the in-flight request
+    // actually completes.
+    thread->setParent(nullptr);
 }
 
-void FillSessionView::shutdownThread(QThread*& t) {
+void FillSessionView::shutdownThread(QThread*& t, bool mustJoin) {
     QThread* thread = t;
     if (!thread) return;
-    if (thread->isRunning()) {
-        thread->quit();
-        if (!thread->wait(5000)) {
-            // Same rationale as the AiFillWorker overload above: refineField()
-            // has no cancellation hook at all yet, so abandon rather than
-            // terminate() the thread on timeout.
-            thread->disconnect(this);
-            thread->setParent(nullptr);
-            t = nullptr;
-            return;
-        }
-    }
+
     thread->disconnect(this);
     t = nullptr;
+
+    if (!thread->isRunning()) return;
+
+    thread->quit();
+    if (thread->wait(5000)) return;
+
+    if (mustJoin) {
+        // Same CompositionRoot-lifetime rationale as the AiFillWorker
+        // overload above: refineField() also touches service_, so the
+        // destructor must block until the thread actually exits.
+        thread->wait();
+        return;
+    }
+
+    // Session-clear mode: refineField() has no cancellation hook yet, so
+    // abandon (detach) rather than terminate() the thread on timeout — see
+    // the AiFillWorker overload above for the full rationale.
+    thread->setParent(nullptr);
 }
 
 FillSessionView::~FillSessionView() {
-    shutdownThread(aiThread_, aiWorker_);
-    shutdownThread(refineThread_);
+    shutdownThread(aiThread_, aiWorker_, /*mustJoin=*/true);
+    shutdownThread(refineThread_, /*mustJoin=*/true);
 }
 
 void FillSessionView::clearSession() {
-    shutdownThread(aiThread_, aiWorker_);
-    shutdownThread(refineThread_);
+    shutdownThread(aiThread_, aiWorker_, /*mustJoin=*/false);
+    shutdownThread(refineThread_, /*mustJoin=*/false);
 
     preFillSnapshot_.clear();
     sourceDocIds_.clear();
