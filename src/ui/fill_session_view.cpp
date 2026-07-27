@@ -242,18 +242,33 @@ bool FillSessionView::openSession(const mondoc::FillSessionId& id,
     return true;
 }
 
-void FillSessionView::shutdownThread(QThread*& t, AiFillWorker* worker) {
+void FillSessionView::shutdownThread(QThread*& t, AiFillWorker*& worker) {
     QThread* thread = t;
     if (!thread) return;
     if (worker) worker->requestCancel();
     if (thread->isRunning()) {
         thread->quit();
         if (!thread->wait(5000)) {
-            thread->terminate();
-            thread->wait();
+            // requestCancel() only flips a flag the worker checks between
+            // steps; it cannot interrupt an in-flight HTTP read (llm_client
+            // blocks for up to 60s inside chat()). terminate() would therefore
+            // be the expected path on every close-during-request, and the
+            // trailing unbounded wait() could then stall the UI for that same
+            // 60s (or land the OS thread mid-syscall). Instead, detach the
+            // thread from this widget so the QObject child-cascade can never
+            // reach it, and let the existing finished->deleteLater connections
+            // reap the thread and worker once the in-flight request actually
+            // completes.
+            thread->disconnect(this);
+            thread->setParent(nullptr);
+            t = nullptr;
+            worker = nullptr;
+            return;
         }
     }
+    thread->disconnect(this);
     t = nullptr;
+    worker = nullptr;
 }
 
 void FillSessionView::shutdownThread(QThread*& t) {
@@ -262,10 +277,16 @@ void FillSessionView::shutdownThread(QThread*& t) {
     if (thread->isRunning()) {
         thread->quit();
         if (!thread->wait(5000)) {
-            thread->terminate();
-            thread->wait();
+            // Same rationale as the AiFillWorker overload above: refineField()
+            // has no cancellation hook at all yet, so abandon rather than
+            // terminate() the thread on timeout.
+            thread->disconnect(this);
+            thread->setParent(nullptr);
+            t = nullptr;
+            return;
         }
     }
+    thread->disconnect(this);
     t = nullptr;
 }
 

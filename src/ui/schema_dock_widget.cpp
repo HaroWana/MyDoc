@@ -234,18 +234,33 @@ SchemaDockWidget::SchemaDockWidget(QWidget* parent)
             this, &SchemaDockWidget::onDiscardProposal);
 }
 
-void SchemaDockWidget::shutdownThread(QThread*& t, AiFieldDetectWorker* worker) {
+void SchemaDockWidget::shutdownThread(QThread*& t, AiFieldDetectWorker*& worker) {
     QThread* thread = t;
     if (!thread) return;
     if (worker) worker->requestCancel();
     if (thread->isRunning()) {
         thread->quit();
         if (!thread->wait(5000)) {
-            thread->terminate();
-            thread->wait();
+            // requestCancel() only flips a flag the worker checks between
+            // steps; it cannot interrupt an in-flight HTTP read (llm_client
+            // blocks for up to 60s inside chat()). terminate() would therefore
+            // be the expected path on every close-during-detection, and the
+            // trailing unbounded wait() could then stall the UI for that same
+            // 60s (or land the OS thread mid-syscall). Instead, detach the
+            // thread from this widget so the QObject child-cascade can never
+            // reach it, and let the existing finished->deleteLater connections
+            // reap the thread and worker once the in-flight request actually
+            // completes.
+            thread->disconnect(this);
+            thread->setParent(nullptr);
+            t = nullptr;
+            worker = nullptr;
+            return;
         }
     }
+    thread->disconnect(this);
     t = nullptr;
+    worker = nullptr;
 }
 
 SchemaDockWidget::~SchemaDockWidget() {

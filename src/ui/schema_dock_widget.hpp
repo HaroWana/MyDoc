@@ -51,7 +51,7 @@ private:
     void setTypeItem(int row, mondoc::domain::FieldType type);
     void restoreIdleButton();
     bool nameExistsInTable(const std::string& normalizedName) const;
-    void shutdownThread(QThread*& t, AiFieldDetectWorker* worker);
+    void shutdownThread(QThread*& t, AiFieldDetectWorker*& worker);
 
     QTableWidget* table_;
     QPushButton* addFieldBtn_;
