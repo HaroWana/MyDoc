@@ -49,6 +49,39 @@ fillsByName(const mondoc::domain::Template& tpl,
     return out;
 }
 
+pugi::xml_node firstElementChild(pugi::xml_node parent) {
+    for (pugi::xml_node c : parent.children()) {
+        if (c.type() == pugi::node_element) return c;
+    }
+    return pugi::xml_node{};
+}
+
+bool isTruthyFill(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return value == "true" || value == "1" || value == "yes" || value == "checked";
+}
+
+void applyCheckboxFill(pugi::xml_node checkboxNode, pugi::xml_node content,
+                       const std::string& fillValue) {
+    const bool checked = isTruthyFill(fillValue);
+
+    pugi::xml_node checkedNode = checkboxNode.child("w14:checked");
+    if (!checkedNode) checkedNode = checkboxNode.append_child("w14:checked");
+    pugi::xml_attribute val = checkedNode.attribute("w14:val");
+    if (!val) val = checkedNode.append_attribute("w14:val");
+    val.set_value(checked ? "1" : "0");
+
+    while (content.first_child()) {
+        content.remove_child(content.first_child());
+    }
+    pugi::xml_node run = content.append_child("w:r");
+    pugi::xml_node t   = run.append_child("w:t");
+    t.append_attribute("xml:space") = "preserve";
+    t.append_child(pugi::node_pcdata)
+        .set_value(checked ? "\xE2\x98\x92" : "\xE2\x98\x90");  // U+2612 / U+2610
+}
+
 void applySdtFills(pugi::xml_node node,
                    const std::unordered_map<std::string, std::string>& byName) {
     for (pugi::xml_node child : node.children()) {
@@ -70,13 +103,22 @@ void applySdtFills(pugi::xml_node node,
             if (!name.empty() && it != byName.end()) {
                 pugi::xml_node content = child.child("w:sdtContent");
                 if (!content) content = child.append_child("w:sdtContent");
-                while (content.first_child()) {
-                    content.remove_child(content.first_child());
+
+                pugi::xml_node checkbox = props ? props.child("w14:checkbox") : pugi::xml_node{};
+                if (checkbox) {
+                    applyCheckboxFill(checkbox, content, it->second);
+                } else {
+                    const bool isBlock =
+                        std::string_view{firstElementChild(content).name()} == "w:p";
+                    while (content.first_child()) {
+                        content.remove_child(content.first_child());
+                    }
+                    pugi::xml_node target = isBlock ? content.append_child("w:p") : content;
+                    pugi::xml_node run = target.append_child("w:r");
+                    pugi::xml_node t   = run.append_child("w:t");
+                    t.append_attribute("xml:space") = "preserve";
+                    t.append_child(pugi::node_pcdata).set_value(it->second.c_str());
                 }
-                pugi::xml_node run = content.append_child("w:r");
-                pugi::xml_node t   = run.append_child("w:t");
-                t.append_attribute("xml:space") = "preserve";
-                t.append_child(pugi::node_pcdata).set_value(it->second.c_str());
             }
         }
         applySdtFills(child, byName);

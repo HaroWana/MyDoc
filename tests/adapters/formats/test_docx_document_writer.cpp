@@ -304,3 +304,99 @@ TEST_CASE("DocxDocumentWriter: substitution never re-scans inserted values",
     }
     REQUIRE(text == "Name: John [note] Smith Note: SECRET");
 }
+
+TEST_CASE("block-level SDT fill wraps run in w:p", "[formats.docx_writer]") {
+    TempFile templateFile{uniqueTempPath("tpl")};
+    TempFile destFile{uniqueTempPath("out")};
+
+    constexpr std::string_view xml = R"XML(<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:sdt><w:sdtPr><w:alias w:val="notes"/></w:sdtPr><w:sdtContent><w:p><w:r><w:t>placeholder</w:t></w:r></w:p></w:sdtContent></w:sdt></w:body></w:document>)XML";
+    writeMinimalDocx(templateFile.path, xml);
+
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"t1"};
+    tpl.name_          = "tpl";
+    tpl.source_format_ = "docx";
+    tpl.source_path_   = templateFile.path;
+    Field f;
+    f.id_   = mondoc::FieldId{"f1"};
+    f.name_ = "notes";
+    f.type_ = FieldType::Paragraph;
+    tpl.fields_.push_back(f);
+
+    std::vector<Fill> fills;
+    Fill fill;
+    fill.field_id_      = mondoc::FieldId{"f1"};
+    fill.current_value_ = "Some block text";
+    fills.push_back(fill);
+
+    auto result = DocxDocumentWriter{}.write(tpl, fills, destFile.path);
+    REQUIRE(result.has_value());
+
+    const std::string outXml = readDocumentXmlFrom(destFile.path);
+    pugi::xml_document doc;
+    REQUIRE(doc.load_buffer(outXml.data(), outXml.size()).status == pugi::status_ok);
+
+    pugi::xml_node content = doc.select_node("//w:sdtContent").node();
+    REQUIRE(content);
+
+    pugi::xml_node firstChild = content.first_child();
+    REQUIRE(firstChild);
+    REQUIRE(std::string_view{firstChild.name()} == "w:p");
+
+    pugi::xml_node run = firstChild.child("w:r");
+    REQUIRE(run);
+    pugi::xml_node t = run.child("w:t");
+    REQUIRE(t);
+    REQUIRE(std::string{t.child_value()} == "Some block text");
+}
+
+TEST_CASE("checkbox SDT fill sets w14:checked", "[formats.docx_writer]") {
+    constexpr std::string_view xml = R"XML(<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body><w:sdt><w:sdtPr><w:alias w:val="agree"/><w14:checkbox><w14:checked w14:val="0"/></w14:checkbox></w:sdtPr><w:sdtContent><w:r><w:t>placeholder</w:t></w:r></w:sdtContent></w:sdt></w:body></w:document>)XML";
+
+    auto runWith = [&](std::string_view fillValue,
+                       const char* expectedVal,
+                       const char* expectedGlyph) {
+        TempFile templateFile{uniqueTempPath("tpl")};
+        TempFile destFile{uniqueTempPath("out")};
+        writeMinimalDocx(templateFile.path, xml);
+
+        Template tpl;
+        tpl.id_            = mondoc::TemplateId{"t1"};
+        tpl.name_          = "tpl";
+        tpl.source_format_ = "docx";
+        tpl.source_path_   = templateFile.path;
+        Field f;
+        f.id_   = mondoc::FieldId{"f1"};
+        f.name_ = "agree";
+        f.type_ = FieldType::Checkbox;
+        tpl.fields_.push_back(f);
+
+        std::vector<Fill> fills;
+        Fill fill;
+        fill.field_id_      = mondoc::FieldId{"f1"};
+        fill.current_value_ = std::string{fillValue};
+        fills.push_back(fill);
+
+        auto result = DocxDocumentWriter{}.write(tpl, fills, destFile.path);
+        REQUIRE(result.has_value());
+
+        const std::string outXml = readDocumentXmlFrom(destFile.path);
+        pugi::xml_document doc;
+        REQUIRE(doc.load_buffer(outXml.data(), outXml.size()).status == pugi::status_ok);
+
+        pugi::xml_node checked = doc.select_node("//w14:checked").node();
+        REQUIRE(checked);
+        REQUIRE(std::string{checked.attribute("w14:val").value()} == expectedVal);
+
+        pugi::xml_node content = doc.select_node("//w:sdtContent").node();
+        REQUIRE(content);
+        pugi::xml_node t = content.child("w:r").child("w:t");
+        REQUIRE(t);
+        REQUIRE(std::string{t.child_value()} == expectedGlyph);
+    };
+
+    runWith("true", "1", "\xE2\x98\x92");
+    runWith("false", "0", "\xE2\x98\x90");
+}
