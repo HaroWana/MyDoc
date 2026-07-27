@@ -146,6 +146,25 @@ TEST_CASE("TextDocumentWriter: substitutes mixed patterns in one template",
             "Jane from France on 2026-05-07.");
 }
 
+TEST_CASE("TextDocumentWriter: substitution never re-scans inserted values",
+          "[formats.text_writer]") {
+    TempFile src{uniqueTempPath(".txt")};
+    TempFile dst{uniqueTempPath(".txt")};
+    writeFile(src.path, "Name: {{name}} Note: [note]");
+
+    auto tpl = makeTpl(src.path,
+                       {Field{FieldId{"f1"}, "name", FieldType::Text},
+                        Field{FieldId{"f2"}, "note", FieldType::Text}});
+    std::vector<Fill> fills{
+        Fill{FieldId{"f1"}, "John [note] Smith", {}},
+        Fill{FieldId{"f2"}, "SECRET", {}},
+    };
+
+    auto r = TextDocumentWriter{}.write(tpl, fills, dst.path);
+    REQUIRE(r.has_value());
+    REQUIRE(readFile(dst.path) == "Name: John [note] Smith Note: SECRET");
+}
+
 TEST_CASE("TextDocumentWriter: .md template substitution byte-matches .txt",
           "[formats.text_writer]") {
     const std::string body =

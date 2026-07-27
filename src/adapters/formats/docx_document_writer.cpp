@@ -8,7 +8,6 @@
 #include <zip.h>
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
@@ -100,38 +99,13 @@ bool hasAnyPlaceholder(const std::string& s) {
     return std::regex_search(s, kAny);
 }
 
-std::string substitutePlaceholders(
-    std::string text, const std::unordered_map<std::string, std::string>& byName) {
-    static const std::array<std::regex, 3> kPatterns{
-        detail::PlaceholderPatterns::kDoubleBrace,
-        detail::PlaceholderPatterns::kSquareBracket,
-        detail::PlaceholderPatterns::kAngleBracket
-    };
-    for (const auto& re : kPatterns) {
-        std::string out;
-        out.reserve(text.size());
-        auto cursor = text.cbegin();
-        for (auto it = std::sregex_iterator{text.cbegin(), text.cend(), re};
-             it != std::sregex_iterator{}; ++it) {
-            out.append(cursor, text.cbegin() + it->position());
-            const std::string key = normalize((*it)[1].str());
-            auto v = byName.find(key);
-            out += (v != byName.end() ? v->second : it->str());
-            cursor = text.cbegin() + it->position() + it->length();
-        }
-        out.append(cursor, text.cend());
-        text = std::move(out);
-    }
-    return text;
-}
-
 void applyPlaceholderFills(pugi::xml_node node,
                            const std::unordered_map<std::string, std::string>& byName) {
     for (pugi::xml_node child : node.children()) {
         if (std::string_view{child.name()} == "w:p") {
             const std::string original = reconstructParagraphText(child);
             if (hasAnyPlaceholder(original)) {
-                const std::string mutated = substitutePlaceholders(original, byName);
+                const std::string mutated = detail::substituteAll(original, byName);
                 if (mutated != original) {
                     pugi::xml_node firstRun = child.child("w:r");
                     pugi::xml_node firstRPr;

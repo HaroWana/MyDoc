@@ -43,4 +43,35 @@ std::vector<std::string> scanPlaceholders(const std::string& text) {
     return names;
 }
 
+namespace {
+// One combined alternation over the same three token charsets as
+// PlaceholderPatterns, so a single left-to-right scan finds every
+// placeholder without ever re-scanning already-substituted output.
+const std::regex kCombinedPattern{
+    R"(\{\{\s*([A-Za-z_][A-Za-z0-9_ ]*?)\s*\}\}|\[([A-Za-z_][A-Za-z0-9_ ]+?)\]|<([A-Za-z_][A-Za-z0-9_ ]+?)>)"};
+}  // namespace
+
+std::string substituteAll(const std::string& original,
+                          const std::unordered_map<std::string, std::string>& fills) {
+    std::string out;
+    out.reserve(original.size());
+    auto cursor = original.cbegin();
+    for (auto it = std::sregex_iterator{original.cbegin(), original.cend(), kCombinedPattern};
+         it != std::sregex_iterator{}; ++it) {
+        out.append(cursor, original.cbegin() + it->position());
+        std::string name;
+        for (int group = 1; group <= 3; ++group) {
+            if ((*it)[group].matched) {
+                name = normalize((*it)[group].str());
+                break;
+            }
+        }
+        auto v = fills.find(name);
+        out += (v != fills.end() ? v->second : it->str());
+        cursor = original.cbegin() + it->position() + it->length();
+    }
+    out.append(cursor, original.cend());
+    return out;
+}
+
 }  // namespace mondoc::adapters::formats::detail

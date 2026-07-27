@@ -8,12 +8,10 @@
 #include <zip.h>
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
-#include <regex>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -50,31 +48,6 @@ fillsByName(const mondoc::domain::Template& tpl,
         }
     }
     return out;
-}
-
-std::string substitutePlaceholders(
-    std::string text, const std::unordered_map<std::string, std::string>& byName) {
-    static const std::array<std::regex, 3> kPatterns{
-        detail::PlaceholderPatterns::kDoubleBrace,
-        detail::PlaceholderPatterns::kSquareBracket,
-        detail::PlaceholderPatterns::kAngleBracket
-    };
-    for (const auto& re : kPatterns) {
-        std::string out;
-        out.reserve(text.size());
-        auto cursor = text.cbegin();
-        for (auto it = std::sregex_iterator{text.cbegin(), text.cend(), re};
-             it != std::sregex_iterator{}; ++it) {
-            out.append(cursor, text.cbegin() + it->position());
-            const std::string key = normalize((*it)[1].str());
-            auto v = byName.find(key);
-            out += (v != byName.end() ? v->second : it->str());
-            cursor = text.cbegin() + it->position() + it->length();
-        }
-        out.append(cursor, text.cend());
-        text = std::move(out);
-    }
-    return text;
 }
 
 void applyFormControlFills(pugi::xml_document& doc,
@@ -137,7 +110,7 @@ void applyPlaceholderFills(pugi::xml_document& doc,
                 for (pugi::xml_node c : child.children()) {
                     if (c.type() == pugi::node_pcdata) {
                         std::string txt = c.value();
-                        std::string rep = substitutePlaceholders(txt, byName);
+                        std::string rep = detail::substituteAll(txt, byName);
                         if (rep != txt) c.set_value(rep.c_str());
                     }
                 }

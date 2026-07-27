@@ -250,3 +250,57 @@ TEST_CASE("DocxDocumentWriter: placeholder runs replaced; unfilled placeholders 
     }
     REQUIRE(text == "Hello Jane, signed [DATE_SIGNED].");
 }
+
+TEST_CASE("DocxDocumentWriter: substitution never re-scans inserted values",
+          "[formats.docx_writer]") {
+    TempFile templateFile{uniqueTempPath("tpl")};
+    TempFile destFile{uniqueTempPath("out")};
+
+    constexpr std::string_view xml = R"XML(<?xml version="1.0"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t xml:space="preserve">Name: {{name}} Note: [note]</w:t></w:r></w:p></w:body></w:document>)XML";
+    writeMinimalDocx(templateFile.path, xml);
+
+    Template tpl;
+    tpl.id_            = mondoc::TemplateId{"t1"};
+    tpl.name_          = "tpl";
+    tpl.source_format_ = "docx";
+    tpl.source_path_   = templateFile.path;
+    Field f1;
+    f1.id_ = mondoc::FieldId{"f1"};
+    f1.name_ = "name";
+    f1.type_ = FieldType::Text;
+    Field f2;
+    f2.id_ = mondoc::FieldId{"f2"};
+    f2.name_ = "note";
+    f2.type_ = FieldType::Text;
+    tpl.fields_.push_back(f1);
+    tpl.fields_.push_back(f2);
+
+    std::vector<Fill> fills;
+    Fill fillName;
+    fillName.field_id_      = mondoc::FieldId{"f1"};
+    fillName.current_value_ = "John [note] Smith";
+    fills.push_back(fillName);
+    Fill fillNote;
+    fillNote.field_id_      = mondoc::FieldId{"f2"};
+    fillNote.current_value_ = "SECRET";
+    fills.push_back(fillNote);
+
+    auto result = DocxDocumentWriter{}.write(tpl, fills, destFile.path);
+    REQUIRE(result.has_value());
+
+    const std::string outXml = readDocumentXmlFrom(destFile.path);
+    pugi::xml_document doc;
+    REQUIRE(doc.load_buffer(outXml.data(), outXml.size()).status == pugi::status_ok);
+
+    pugi::xml_node para = doc.select_node("//w:p").node();
+    REQUIRE(para);
+
+    std::string text;
+    for (pugi::xml_node run : para.children("w:r")) {
+        for (pugi::xml_node t : run.children("w:t")) {
+            text += t.child_value();
+        }
+    }
+    REQUIRE(text == "Name: John [note] Smith Note: SECRET");
+}

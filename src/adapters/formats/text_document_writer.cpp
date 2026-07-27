@@ -7,7 +7,6 @@
 #include <fstream>
 #include <ios>
 #include <iterator>
-#include <regex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -34,23 +33,6 @@ fillsByName(const mondoc::domain::Template& tpl,
             out[normalize(it->second->name_)] = fill.current_value_;
         }
     }
-    return out;
-}
-
-std::string substituteOne(std::string text, const std::regex& re,
-                          const std::unordered_map<std::string, std::string>& byName) {
-    std::string out;
-    out.reserve(text.size());
-    auto cursor = text.cbegin();
-    for (auto it = std::sregex_iterator{text.cbegin(), text.cend(), re};
-         it != std::sregex_iterator{}; ++it) {
-        out.append(cursor, text.cbegin() + it->position());
-        const std::string key = normalize((*it)[1].str());
-        auto v = byName.find(key);
-        out += (v != byName.end() ? v->second : it->str());
-        cursor = text.cbegin() + it->position() + it->length();
-    }
-    out.append(cursor, text.cend());
     return out;
 }
 
@@ -84,9 +66,7 @@ TextDocumentWriter::write(const mondoc::domain::Template& tpl,
                         std::istreambuf_iterator<char>{}};
 
     const auto byName = fillsByName(tpl, fills);
-    content = substituteOne(std::move(content), detail::PlaceholderPatterns::kDoubleBrace,   byName);
-    content = substituteOne(std::move(content), detail::PlaceholderPatterns::kSquareBracket, byName);
-    content = substituteOne(std::move(content), detail::PlaceholderPatterns::kAngleBracket,  byName);
+    content = detail::substituteAll(content, byName);
 
     std::ofstream of(dest, std::ios::binary | std::ios::trunc);
     if (!of) {
