@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
-#include <stdexcept>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -23,12 +23,24 @@ bool startsWith(std::string_view s, std::string_view prefix) {
 
 }  // namespace
 
-bool LlmClient::isAcceptableHost(const std::string& host) {
-    if (startsWith(host, "https://")) return true;
-    if (startsWith(host, "http://localhost"))    return true;
-    if (startsWith(host, "http://127.0.0.1"))    return true;
-    if (startsWith(host, "http://[::1]"))        return true;
-    return false;
+bool isAcceptableHost(const std::string& url) {
+    if (startsWith(url, "https://")) return true;
+    if (!startsWith(url, "http://")) return false;
+
+    std::string_view rest(url);
+    rest.remove_prefix(7);  // strlen("http://")
+
+    std::string_view hostPart;
+    if (!rest.empty() && rest.front() == '[') {
+        auto closeBracket = rest.find(']');
+        if (closeBracket == std::string_view::npos) return false;
+        hostPart = rest.substr(0, closeBracket + 1);
+    } else {
+        auto end = rest.find_first_of("/:");
+        hostPart = (end == std::string_view::npos) ? rest : rest.substr(0, end);
+    }
+
+    return hostPart == "localhost" || hostPart == "127.0.0.1" || hostPart == "[::1]";
 }
 
 LlmError LlmClient::classifyHttpStatus(int status, std::string bodyTrunc) {
@@ -49,14 +61,19 @@ LlmError LlmClient::classifyHttpStatus(int status, std::string bodyTrunc) {
     return LlmError::badResponse("unexpected status " + std::to_string(status));
 }
 
+mondoc::expected<std::unique_ptr<LlmClient>, LlmError>
+LlmClient::create(std::string host, std::string apiKey, std::string pathPrefix) {
+    if (!isAcceptableHost(host)) {
+        return mondoc::unexpected(LlmError::unreachable("insecure LLM URL: " + host));
+    }
+    return std::unique_ptr<LlmClient>(
+        new LlmClient(std::move(host), std::move(apiKey), std::move(pathPrefix)));
+}
+
 LlmClient::LlmClient(std::string host, std::string apiKey, std::string pathPrefix)
     : host_(std::move(host)),
       apiKey_(std::move(apiKey)),
-      pathPrefix_(std::move(pathPrefix)) {
-    if (!isAcceptableHost(host_)) {
-        throw std::invalid_argument("non-HTTPS host not allowed: " + host_);
-    }
-}
+      pathPrefix_(std::move(pathPrefix)) {}
 
 mondoc::expected<std::string, LlmError>
 LlmClient::chat(const std::string& body) {

@@ -9,7 +9,9 @@ using mondoc::adapters::ai::LlmConfig;
 
 static std::unique_ptr<LlmClient> makeClient(const LlmConfig& cfg) {
     if (!cfg.isConfigured()) return nullptr;
-    return std::make_unique<LlmClient>(cfg.api_url, cfg.api_key);
+    auto result = LlmClient::create(cfg.api_url, cfg.api_key);
+    if (!result.has_value()) return nullptr;
+    return std::move(result.value());
 }
 
 static std::unique_ptr<AiFillPipeline> makePipeline(LlmClient* client, const LlmConfig& cfg) {

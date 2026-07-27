@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <string>
 
 #include "i_llm_client.hpp"
@@ -7,10 +8,13 @@
 
 namespace mondoc::adapters::ai {
 
+bool isAcceptableHost(const std::string& url);
+
 class LlmClient : public ILlmClient {
 public:
-    LlmClient(std::string host, std::string apiKey,
-              std::string pathPrefix = "/v1");
+    static mondoc::expected<std::unique_ptr<LlmClient>, LlmError>
+    create(std::string host, std::string apiKey, std::string pathPrefix = "/v1");
+
     ~LlmClient() override = default;
 
     mondoc::expected<std::string, LlmError>
@@ -18,9 +22,9 @@ public:
 
     static LlmError classifyHttpStatus(int status, std::string bodyTrunc);
 
-    static bool isAcceptableHost(const std::string& host);
-
 private:
+    LlmClient(std::string host, std::string apiKey, std::string pathPrefix);
+
     std::string host_;
     std::string apiKey_;
     std::string pathPrefix_;

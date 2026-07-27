@@ -6,7 +6,6 @@
 #include <httplib.h>
 
 #include <chrono>
-#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -46,30 +45,30 @@ TEST_CASE("LlmClient::classifyHttpStatus: 404 -> BadResponse",
     REQUIRE(err.message().find("404") != std::string::npos);
 }
 
-TEST_CASE("LlmClient::isAcceptableHost: https accepted",
+TEST_CASE("isAcceptableHost: https accepted",
           "[adapters.ai][llm_client][app06]") {
-    REQUIRE(LlmClient::isAcceptableHost("https://hub.example.com"));
+    REQUIRE(isAcceptableHost("https://hub.example.com"));
 }
 
-TEST_CASE("LlmClient::isAcceptableHost: http non-localhost rejected",
+TEST_CASE("isAcceptableHost: http non-localhost rejected",
           "[adapters.ai][llm_client][app06]") {
-    REQUIRE_FALSE(LlmClient::isAcceptableHost("http://hub.example.com"));
+    REQUIRE_FALSE(isAcceptableHost("http://hub.example.com"));
 }
 
-TEST_CASE("LlmClient::isAcceptableHost: http localhost accepted",
+TEST_CASE("isAcceptableHost: http localhost accepted",
           "[adapters.ai][llm_client][app06]") {
-    REQUIRE(LlmClient::isAcceptableHost("http://localhost:8080"));
+    REQUIRE(isAcceptableHost("http://localhost:8080"));
 }
 
-TEST_CASE("LlmClient::isAcceptableHost: http 127.0.0.1 accepted",
+TEST_CASE("isAcceptableHost: http 127.0.0.1 accepted",
           "[adapters.ai][llm_client][app06]") {
-    REQUIRE(LlmClient::isAcceptableHost("http://127.0.0.1:11434"));
+    REQUIRE(isAcceptableHost("http://127.0.0.1:11434"));
 }
 
-TEST_CASE("LlmClient constructor: rejects non-HTTPS non-localhost host",
+TEST_CASE("LlmClient::create: rejects non-HTTPS non-localhost host",
           "[adapters.ai][llm_client][app06]") {
-    REQUIRE_THROWS_AS(LlmClient("http://hub.example.com", "k"),
-                      std::invalid_argument);
+    auto result = LlmClient::create("http://hub.example.com", "k");
+    REQUIRE_FALSE(result.has_value());
 }
 
 TEST_CASE("LlmClient::chat: 429 from real server -> RateLimited (APP-06)",
@@ -89,8 +88,8 @@ TEST_CASE("LlmClient::chat: 429 from real server -> RateLimited (APP-06)",
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    LlmClient client("http://127.0.0.1:" + std::to_string(port), "k");
-    auto result = client.chat("{}");
+    auto client = LlmClient::create("http://127.0.0.1:" + std::to_string(port), "k").value();
+    auto result = client->chat("{}");
     svr.stop();
     t.join();
 
@@ -116,8 +115,8 @@ TEST_CASE("LlmClient::chat: 500 from real server -> BadResponse (APP-06)",
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    LlmClient client("http://127.0.0.1:" + std::to_string(port), "k");
-    auto result = client.chat("{}");
+    auto client = LlmClient::create("http://127.0.0.1:" + std::to_string(port), "k").value();
+    auto result = client->chat("{}");
     svr.stop();
     t.join();
 
@@ -137,8 +136,8 @@ TEST_CASE("LlmClient::chat: unreachable host -> Unreachable (APP-03)",
     }
     // Don't listen — let the OS reject connections.
 
-    LlmClient client("http://127.0.0.1:" + std::to_string(port), "k");
-    auto result = client.chat("{}");
+    auto client = LlmClient::create("http://127.0.0.1:" + std::to_string(port), "k").value();
+    auto result = client->chat("{}");
 
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().kind() == LlmError::Kind::Unreachable);
