@@ -51,20 +51,28 @@ public:
     AiFillPipeline(ILlmClient& client, LlmConfig config) noexcept;
 
     // Synchronous; dispatched from a QThread by the UI layer. Checks
-    // `cancelled` between Pass 1 and Pass 2 and after each chat() return.
+    // `cancelled` after every chat() return (Pass 1 and Pass 2).
     mondoc::expected<std::vector<mondoc::domain::Fill>, LlmError>
     run(const RunInput& input, const std::atomic<bool>& cancelled);
 
     // Single LLM call: refine a previously-filled form. Returns only the
-    // fields that changed (caller merges).
+    // fields that changed (caller merges). `cancelled` may be null when the
+    // caller has no cancellation token; if non-null, checked after the
+    // chat() return.
     mondoc::expected<std::vector<mondoc::domain::Fill>, LlmError>
-    refine(const RefineInput& input);
+    refine(const RefineInput& input, const std::atomic<bool>* cancelled);
 
     // Visible for testing: validates LLM-returned offsets against source
-    // text, drops facts whose excerpt does not match (Pitfall 1).
+    // text, drops facts whose excerpt does not match (Pitfall 1). Accepts at
+    // most 200 facts (deterministic prefix), matching kMaxProposals in
+    // AiFieldDetector (SAI-6).
     static std::vector<ExtractedFact>
     validatePass1Facts(const std::string& jsonContent,
                        const std::vector<AiFillSourceDoc>& sources);
+
+    // Visible for testing (SAI-19).
+    static std::string normalizeDateValue(const std::string& v);
+    static std::string normalizeNumberValue(const std::string& v);
 
 private:
     ILlmClient& client_;

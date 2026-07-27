@@ -674,7 +674,8 @@ TEST_CASE("FillSessionService::refineField: nullptr pipeline returns InvalidArgu
     fillRepo.store_["s1"] = makeSession("s1", t.id_, FillStatus::Reviewing);
 
     FillSessionService svc{fillRepo, tplRepo};
-    auto r = svc.refineField(FillSessionId{"s1"}, "hi", {}, {});
+    std::atomic<bool> cancelled{false};
+    auto r = svc.refineField(FillSessionId{"s1"}, "hi", {}, {}, cancelled);
 
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error().kind() == mondoc::Error::Kind::InvalidArgument);
@@ -701,7 +702,8 @@ TEST_CASE("FillSessionService::refineField: happy path persists only updated fie
     AiFillPipeline pipe{fake, minimalConfig()};
     FillSessionService svc{fillRepo, tplRepo, &pipe};
 
-    auto r = svc.refineField(FillSessionId{"s1"}, "rename", {}, {});
+    std::atomic<bool> cancelled{false};
+    auto r = svc.refineField(FillSessionId{"s1"}, "rename", {}, {}, cancelled);
 
     REQUIRE(r.has_value());
     REQUIRE(r->size() == 1);
@@ -740,7 +742,8 @@ TEST_CASE("FillSessionService::refineField: manual-sticky fill is preserved (REV
     AiFillPipeline pipe{fake, minimalConfig()};
     FillSessionService svc{fillRepo, tplRepo, &pipe};
 
-    auto r = svc.refineField(FillSessionId{"s1"}, "override", {}, {});
+    std::atomic<bool> cancelled{false};
+    auto r = svc.refineField(FillSessionId{"s1"}, "override", {}, {}, cancelled);
 
     REQUIRE(r.has_value());
     REQUIRE(r->empty());

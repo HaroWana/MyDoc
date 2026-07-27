@@ -21,6 +21,7 @@ class QUndoStack;
 namespace mondoc::ui {
 
 class AiFillWorker;
+class AiRefineWorker;
 class ChatPane;
 class FieldFormPane;
 class SourceDocPane;
@@ -69,7 +70,7 @@ private:
     std::vector<mondoc::services::AiFillSourceInput> currentSources() const;
     void showAiErrorDialog(mondoc::services::AiFailureKind kind, const QString& message);
     void shutdownThread(QThread*& t, AiFillWorker*& worker, bool mustJoin);
-    void shutdownThread(QThread*& t, bool mustJoin);
+    void shutdownThread(QThread*& t, AiRefineWorker*& worker, bool mustJoin);
 
     mondoc::services::FillSessionService& service_;
     mondoc::domain::ITemplateRepository& templateRepo_;
@@ -94,6 +95,7 @@ private:
     QThread* aiThread_      = nullptr;
     AiFillWorker* aiWorker_ = nullptr;
     QThread* refineThread_  = nullptr;
+    AiRefineWorker* refineWorker_ = nullptr;
 
     QHash<QString, QString> preFillSnapshot_;
     std::vector<mondoc::SourceDocId> sourceDocIds_;

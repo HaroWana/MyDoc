@@ -18,6 +18,7 @@
 #include <QVBoxLayout>
 
 #include "ai_fill_worker.hpp"
+#include "ai_refine_worker.hpp"
 #include "chat_pane.hpp"
 #include "export_dialog.hpp"
 #include "field_form_pane.hpp"
@@ -277,12 +278,18 @@ void FillSessionView::shutdownThread(QThread*& t, AiFillWorker*& worker, bool mu
     thread->setParent(nullptr);
 }
 
-void FillSessionView::shutdownThread(QThread*& t, bool mustJoin) {
+void FillSessionView::shutdownThread(QThread*& t, AiRefineWorker*& worker, bool mustJoin) {
     QThread* thread = t;
     if (!thread) return;
 
+    // Same rationale as the AiFillWorker overload above: sever delivery to
+    // `this` before anything else, then request cancellation so a worker
+    // blocked on requestCancel()-honoring code can unwind promptly.
+    if (worker) worker->disconnect(this);
     thread->disconnect(this);
+    if (worker) worker->requestCancel();
     t = nullptr;
+    worker = nullptr;
 
     if (!thread->isRunning()) return;
 
@@ -297,20 +304,22 @@ void FillSessionView::shutdownThread(QThread*& t, bool mustJoin) {
         return;
     }
 
-    // Session-clear mode: refineField() has no cancellation hook yet, so
-    // abandon (detach) rather than terminate() the thread on timeout — see
-    // the AiFillWorker overload above for the full rationale.
+    // Session-clear mode: same detach rationale as the AiFillWorker overload
+    // above — requestCancel() cannot interrupt an in-flight HTTP read, so
+    // detach and let the existing finished/failed/cancelled -> thread->quit
+    // and thread->finished -> deleteLater connections reap both objects once
+    // the in-flight request actually completes.
     thread->setParent(nullptr);
 }
 
 FillSessionView::~FillSessionView() {
     shutdownThread(aiThread_, aiWorker_, /*mustJoin=*/true);
-    shutdownThread(refineThread_, /*mustJoin=*/true);
+    shutdownThread(refineThread_, refineWorker_, /*mustJoin=*/true);
 }
 
 void FillSessionView::clearSession() {
     shutdownThread(aiThread_, aiWorker_, /*mustJoin=*/false);
-    shutdownThread(refineThread_, /*mustJoin=*/false);
+    shutdownThread(refineThread_, refineWorker_, /*mustJoin=*/false);
 
     preFillSnapshot_.clear();
     sourceDocIds_.clear();
@@ -503,35 +512,25 @@ void FillSessionView::onChatRefinementRequested(
     }
 
     refineThread_ = new QThread(this);
+    refineWorker_ = new AiRefineWorker(service_, currentSessionId_,
+                                       prompt.toStdString(), currentSources(),
+                                       std::move(lastFacts));
+    refineWorker_->moveToThread(refineThread_);
 
-    auto sessionId = currentSessionId_;
-    auto sources   = currentSources();
-    auto userMsg   = prompt.toStdString();
-    auto facts     = std::move(lastFacts);
-    auto* svc      = &service_;
-
-    QObject* runner = new QObject();
-    runner->moveToThread(refineThread_);
-
-    connect(refineThread_, &QThread::started, runner,
-            [this, runner, svc, sessionId, sources, userMsg, facts]() mutable {
-                auto res = svc->refineField(sessionId, userMsg, sources, facts);
-                if (res) {
-                    std::vector<mondoc::domain::Fill> out = std::move(*res);
-                    QMetaObject::invokeMethod(this,
-                        [this, out = std::move(out)]() mutable {
-                            onChatRefineFinished(std::move(out));
-                        }, Qt::QueuedConnection);
-                } else {
-                    QString msg = QString::fromStdString(res.error().message());
-                    QMetaObject::invokeMethod(this,
-                        [this, msg]() { onChatRefineFailed(msg); },
-                        Qt::QueuedConnection);
-                }
-                runner->deleteLater();
-            });
+    connect(refineThread_, &QThread::started, refineWorker_, &AiRefineWorker::run);
+    connect(refineWorker_, &AiRefineWorker::finished,
+            this, &FillSessionView::onChatRefineFinished, Qt::QueuedConnection);
+    connect(refineWorker_, &AiRefineWorker::failed,
+            this, &FillSessionView::onChatRefineFailed, Qt::QueuedConnection);
+    connect(refineWorker_, &AiRefineWorker::finished, refineThread_, &QThread::quit);
+    connect(refineWorker_, &AiRefineWorker::failed,   refineThread_, &QThread::quit);
+    connect(refineWorker_, &AiRefineWorker::cancelled, refineThread_, &QThread::quit);
+    connect(refineThread_, &QThread::finished, refineWorker_, &QObject::deleteLater);
     connect(refineThread_, &QThread::finished, refineThread_, &QObject::deleteLater);
-    connect(refineThread_, &QThread::finished, this, [this]() { refineThread_ = nullptr; });
+    connect(refineThread_, &QThread::finished, this, [this]() {
+        refineThread_ = nullptr;
+        refineWorker_ = nullptr;
+    });
 
     refineThread_->start();
 }
@@ -545,7 +544,6 @@ void FillSessionView::onChatRefineFinished(std::vector<mondoc::domain::Fill> fil
         chatPane_->appendAiMessage(tr("No changes applied."));
     }
     if (chatPane_) chatPane_->setBusy(false);
-    if (refineThread_) refineThread_->quit();
 }
 
 void FillSessionView::onChatRefineFailed(QString message) {
@@ -554,7 +552,6 @@ void FillSessionView::onChatRefineFailed(QString message) {
         chatPane_->setBusy(false);
     }
     emit statusMessageRequested(tr("AI fill failed."), 4000);
-    if (refineThread_) refineThread_->quit();
 }
 
 void FillSessionView::onBackClicked() {

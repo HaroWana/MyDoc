@@ -257,6 +257,72 @@ TEST_CASE("run: Pass 2 LlmError propagates",
     REQUIRE(result.error().kind() == LlmError::Kind::RateLimited);
 }
 
+TEST_CASE("run: Pass 2 non-string field_id/value returns BadResponse without crashing",
+          "[adapters.ai][pipeline][sai-4]") {
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{{"facts", nlohmann::json::array()}}));
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"fills", nlohmann::json::array({
+            nlohmann::json{{"field_id", 123}, {"value", nlohmann::json{{"x", 1}}}},
+        })}
+    }));
+
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RunInput in;
+    in.tpl_ = &tpl;
+    in.sources_ = oneSource();
+    std::atomic<bool> cancelled{false};
+
+    auto result = pipe.run(in, cancelled);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::BadResponse);
+}
+
+TEST_CASE("run: cancel flag set after Pass 2 chat() returns yields Cancelled",
+          "[adapters.ai][pipeline][sai-15]") {
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{{"facts", nlohmann::json::array()}}));
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{{"fills", nlohmann::json::array()}}));
+
+    std::atomic<bool> cancelled{false};
+    int callCount = 0;
+    fake.onAfterCall_ = [&] {
+        ++callCount;
+        if (callCount == 2) cancelled.store(true);
+    };
+
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RunInput in;
+    in.tpl_ = &tpl;
+    in.sources_ = oneSource();
+
+    auto result = pipe.run(in, cancelled);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::Cancelled);
+    REQUIRE(fake.chatCalls_.size() == 2);
+}
+
+TEST_CASE("normalizeDateValue rejects impossible dates and zero-pads valid ones (SAI-19)",
+          "[adapters.ai][pipeline][sai-19]") {
+    REQUIRE(AiFillPipeline::normalizeDateValue("2024-99-99") == "2024-99-99");
+    REQUIRE(AiFillPipeline::normalizeDateValue("2024-12-31") == "2024-12-31");
+    REQUIRE(AiFillPipeline::normalizeDateValue("2024-3-5") == "2024-03-05");
+    REQUIRE(AiFillPipeline::normalizeDateValue("2024-13-01") == "2024-13-01");
+    REQUIRE(AiFillPipeline::normalizeDateValue("2024-01-32") == "2024-01-32");
+}
+
+TEST_CASE("normalizeNumberValue keeps a single leading minus and a single decimal point (SAI-19)",
+          "[adapters.ai][pipeline][sai-19]") {
+    REQUIRE(AiFillPipeline::normalizeNumberValue("1.2.3-") == "1.23");
+    REQUIRE(AiFillPipeline::normalizeNumberValue("-5") == "-5");
+    REQUIRE(AiFillPipeline::normalizeNumberValue("5-3") == "53");
+    REQUIRE(AiFillPipeline::normalizeNumberValue("95 points") == "95");
+}
+
 TEST_CASE("refine: returns only the fields named in the LLM response",
           "[adapters.ai][pipeline][refine]") {
     FakeLlmClient fake;
@@ -278,7 +344,7 @@ TEST_CASE("refine: returns only the fields named in the LLM response",
     };
     in.user_message_ = "make name new";
 
-    auto result = pipe.refine(in);
+    auto result = pipe.refine(in, nullptr);
 
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1);
@@ -302,7 +368,7 @@ TEST_CASE("refine: empty updates array returns empty vector",
     in.sources_ = oneSource();
     in.user_message_ = "no-op";
 
-    auto result = pipe.refine(in);
+    auto result = pipe.refine(in, nullptr);
 
     REQUIRE(result.has_value());
     REQUIRE(result->empty());
@@ -324,7 +390,7 @@ TEST_CASE("refine: normalizes date format on update",
     in.sources_ = oneSource();
     in.user_message_ = "format date";
 
-    auto result = pipe.refine(in);
+    auto result = pipe.refine(in, nullptr);
 
     REQUIRE(result.has_value());
     REQUIRE(result->size() == 1);
@@ -340,7 +406,7 @@ TEST_CASE("refine: empty user_message returns BadResponse without chat call",
     in.tpl_ = &tpl;
     in.user_message_ = "";
 
-    auto result = pipe.refine(in);
+    auto result = pipe.refine(in, nullptr);
 
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().kind() == LlmError::Kind::BadResponse);
@@ -359,9 +425,53 @@ TEST_CASE("refine: LLM error propagates and only one chat call is made (Pitfall 
     in.sources_ = oneSource();
     in.user_message_ = "anything";
 
-    auto result = pipe.refine(in);
+    auto result = pipe.refine(in, nullptr);
 
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().kind() == LlmError::Kind::Unreachable);
     REQUIRE(fake.chatCalls_.size() == 1);
+}
+
+TEST_CASE("refine: non-string field_id/value returns BadResponse without crashing",
+          "[adapters.ai][pipeline][refine][sai-4]") {
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"updates", nlohmann::json::array({
+            nlohmann::json{{"field_id", 123}, {"value", nlohmann::json{{"x", 1}}}},
+        })}
+    }));
+
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RefineInput in;
+    in.tpl_ = &tpl;
+    in.sources_ = oneSource();
+    in.user_message_ = "anything";
+
+    auto result = pipe.refine(in, nullptr);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::BadResponse);
+}
+
+TEST_CASE("refine: cancel flag set after chat() returns yields Cancelled",
+          "[adapters.ai][pipeline][refine][sai-15]") {
+    FakeLlmClient fake;
+    fake.enqueueOk(makeChatCompletion(nlohmann::json{
+        {"updates", nlohmann::json::array()}
+    }));
+    std::atomic<bool> cancelled{false};
+    fake.onAfterCall_ = [&] { cancelled.store(true); };
+
+    AiFillPipeline pipe(fake, minimalConfig());
+    Template tpl = threeFieldTemplate();
+    RefineInput in;
+    in.tpl_ = &tpl;
+    in.sources_ = oneSource();
+    in.user_message_ = "anything";
+
+    auto result = pipe.refine(in, &cancelled);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::Cancelled);
 }

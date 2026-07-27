@@ -131,7 +131,8 @@ FillSessionService::refineField(
         const mondoc::FillSessionId& sessionId,
         const std::string& userMessage,
         const std::vector<AiFillSourceInput>& sources,
-        const std::vector<AiExtractedFact>& /*lastPass1Facts*/) {
+        const std::vector<AiExtractedFact>& /*lastPass1Facts*/,
+        const std::atomic<bool>& cancelled) {
     if (!aiPipeline_) {
         return mondoc::unexpected(
             mondoc::Error::invalidArgument("AI not configured"));
@@ -147,7 +148,7 @@ FillSessionService::refineField(
     refineInput.current_fills_ = sessionRes->fills_;
     refineInput.user_message_  = userMessage;
 
-    auto pipeResult = aiPipeline_->refine(refineInput);
+    auto pipeResult = aiPipeline_->refine(refineInput, &cancelled);
     if (!pipeResult) {
         return mondoc::unexpected(llmErrorToError(pipeResult.error()));
     }

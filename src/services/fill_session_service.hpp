@@ -72,7 +72,8 @@ public:
     refineField(const mondoc::FillSessionId& sessionId,
                 const std::string& userMessage,
                 const std::vector<AiFillSourceInput>& sources,
-                const std::vector<AiExtractedFact>& lastPass1Facts);
+                const std::vector<AiExtractedFact>& lastPass1Facts,
+                const std::atomic<bool>& cancelled);
 
     mondoc::expected<std::vector<mondoc::domain::FillSession>, mondoc::Error>
     listDrafts();

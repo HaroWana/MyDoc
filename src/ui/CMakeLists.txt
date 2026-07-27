@@ -2,6 +2,7 @@ add_library(mondoc_ui STATIC
     about_dialog.cpp
     ai_field_detect_worker.cpp
     ai_fill_worker.cpp
+    ai_refine_worker.cpp
     chat_pane.cpp
     edit_field_command.cpp
     export_dialog.cpp

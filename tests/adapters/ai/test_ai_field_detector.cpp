@@ -225,6 +225,69 @@ TEST_CASE("detect skips new_fields items with empty or missing name",
     REQUIRE(result->new_fields[0].name_ == "valid_field");
 }
 
+TEST_CASE("detect returns badResponse when new_fields has non-string name/type",
+          "[adapters.ai][field_detector][sai-5]") {
+    FakeLlmClient client;
+    nlohmann::json response = {
+        {"new_fields", nlohmann::json::array({
+            nlohmann::json{{"name", 123}, {"type", true}}
+        })},
+        {"improvements", nlohmann::json::array()}
+    };
+    client.enqueueOk(makeChatCompletion(response));
+
+    AiFieldDetector detector(client, testConfig());
+    std::atomic<bool> cancelled{false};
+    auto result = detector.detect("some text", {}, cancelled);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().kind() == LlmError::Kind::BadResponse);
+}
+
+TEST_CASE("detect caps improvements at 200 items",
+          "[adapters.ai][field_detector][sai-6]") {
+    FakeLlmClient client;
+    nlohmann::json improvements = nlohmann::json::array();
+    for (int i = 0; i < 250; ++i) {
+        improvements.push_back({{"field_name", "f" + std::to_string(i)},
+                                 {"suggested_name", "g" + std::to_string(i)},
+                                 {"suggested_type", "text"}});
+    }
+    nlohmann::json response = {
+        {"new_fields", nlohmann::json::array()},
+        {"improvements", improvements}
+    };
+    client.enqueueOk(makeChatCompletion(response));
+
+    AiFieldDetector detector(client, testConfig());
+    std::atomic<bool> cancelled{false};
+    auto result = detector.detect("some text", {}, cancelled);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->improvements.size() == 200);
+}
+
+TEST_CASE("detect skips improvements items missing required keys",
+          "[adapters.ai][field_detector][phase06]") {
+    FakeLlmClient client;
+    nlohmann::json response = {
+        {"new_fields", nlohmann::json::array()},
+        {"improvements", nlohmann::json::array({
+            nlohmann::json{{"field_name", "f1"}},
+            nlohmann::json{{"field_name", "f2"}, {"suggested_name", "g2"}, {"suggested_type", "text"}}
+        })}
+    };
+    client.enqueueOk(makeChatCompletion(response));
+
+    AiFieldDetector detector(client, testConfig());
+    std::atomic<bool> cancelled{false};
+    auto result = detector.detect("some text", {}, cancelled);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->improvements.size() == 1);
+    REQUIRE(result->improvements[0].field_name == "f2");
+}
+
 TEST_CASE("detect falls back to FieldType::Text for unknown type value",
           "[adapters.ai][field_detector][phase06]") {
     FakeLlmClient client;

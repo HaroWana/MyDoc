@@ -6,6 +6,7 @@ add_library(mondoc_adapters_ai STATIC
     llm_client.cpp
     ai_fill_pipeline.cpp
     ai_field_detector.cpp
+    detail/ai_json.cpp
 )
 
 target_include_directories(mondoc_adapters_ai PUBLIC

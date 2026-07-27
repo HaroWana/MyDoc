@@ -75,3 +75,17 @@ TEST_CASE("validatePass1Facts: returns empty when response lacks choices[0].mess
     auto facts = AiFillPipeline::validatePass1Facts("{}", oneSource());
     REQUIRE(facts.empty());
 }
+
+TEST_CASE("validatePass1Facts: caps accepted facts at 200 (SAI-6)",
+          "[adapters.ai][pass1][sai-6]") {
+    nlohmann::json facts = nlohmann::json::array();
+    for (int i = 0; i < 250; ++i) {
+        facts.push_back({{"source_index", 0}, {"char_start", 12}, {"char_end", 20},
+                          {"excerpt", "John Doe"}, {"summary", "name"}});
+    }
+    nlohmann::json inner = {{"facts", facts}};
+    auto wrapped = wrapAsChatCompletion(inner.dump());
+
+    auto result = AiFillPipeline::validatePass1Facts(wrapped, oneSource());
+    REQUIRE(result.size() == 200);
+}

@@ -4,47 +4,12 @@
 #include <string>
 #include <string_view>
 
+#include "detail/ai_json.hpp"
 #include "field_detect_prompt.hpp"
 
 namespace mondoc::adapters::ai {
 
 namespace {
-
-// Duplicate of the same helper in ai_fill_pipeline.cpp (anonymous namespace, no external linkage).
-// If extracted to ai_utils.hpp in future, remove both copies and update the comment there.
-mondoc::expected<nlohmann::json, LlmError>
-parseChatCompletionContent(const std::string& body) {
-    try {
-        auto outer = nlohmann::json::parse(body);
-        if (!outer.contains("choices") || !outer["choices"].is_array() ||
-            outer["choices"].empty()) {
-            return mondoc::unexpected<LlmError>(LlmError::badResponse("missing choices"));
-        }
-        const auto& msg = outer["choices"][0];
-        if (!msg.contains("message") ||
-            !msg["message"].contains("content") ||
-            !msg["message"]["content"].is_string()) {
-            return mondoc::unexpected<LlmError>(LlmError::badResponse("missing content"));
-        }
-        return nlohmann::json::parse(msg["message"]["content"].get<std::string>());
-    } catch (const nlohmann::json::exception& e) {
-        return mondoc::unexpected<LlmError>(LlmError::badResponse(e.what()));
-    }
-}
-
-// Duplicate of the same helper in ai_fill_pipeline.cpp (anonymous namespace, no external linkage).
-// If extracted to ai_utils.hpp in future, remove both copies and update the comment there.
-nlohmann::json buildJsonSchemaResponseFormat(std::string_view name,
-                                             std::string_view schemaLiteral) {
-    return nlohmann::json{
-        {"type", "json_schema"},
-        {"json_schema", {
-            {"name",   std::string(name)},
-            {"strict", true},
-            {"schema", nlohmann::json::parse(schemaLiteral)},
-        }},
-    };
-}
 
 mondoc::domain::FieldType parseFieldType(const std::string& s) {
     using mondoc::domain::FieldType;
@@ -56,36 +21,45 @@ mondoc::domain::FieldType parseFieldType(const std::string& s) {
     return FieldType::Text;
 }
 
-DetectionResult parseDetectionResult(const nlohmann::json& content) {
+// SAI-5: a schema-ignoring server can send non-string name/type values; any
+// nlohmann type_error while walking the arrays below is reported as
+// LlmError::BadResponse instead of propagating out of this (worker-thread)
+// call.
+mondoc::expected<DetectionResult, LlmError>
+parseDetectionResult(const nlohmann::json& content) {
     DetectionResult result;
     constexpr std::size_t kMaxProposals = 200;
 
-    if (content.contains("new_fields") && content["new_fields"].is_array()) {
-        for (const auto& item : content["new_fields"]) {
-            if (result.new_fields.size() >= kMaxProposals) break;
-            if (!item.contains("name") || !item.contains("type")) continue;
-            auto name = item["name"].get<std::string>();
-            if (name.empty()) continue;
-            mondoc::domain::Field f;
-            f.name_   = std::move(name);
-            f.type_   = parseFieldType(item["type"].get<std::string>());
-            f.origin_ = mondoc::domain::FieldOrigin::Ai;
-            result.new_fields.push_back(std::move(f));
+    try {
+        if (content.contains("new_fields") && content["new_fields"].is_array()) {
+            for (const auto& item : content["new_fields"]) {
+                if (result.new_fields.size() >= kMaxProposals) break;
+                if (!item.contains("name") || !item.contains("type")) continue;
+                auto name = item["name"].get<std::string>();
+                if (name.empty()) continue;
+                mondoc::domain::Field f;
+                f.name_   = std::move(name);
+                f.type_   = parseFieldType(item["type"].get<std::string>());
+                f.origin_ = mondoc::domain::FieldOrigin::Ai;
+                result.new_fields.push_back(std::move(f));
+            }
         }
-    }
 
-    if (content.contains("improvements") && content["improvements"].is_array()) {
-        for (const auto& item : content["improvements"]) {
-            if (result.improvements.size() >= kMaxProposals) break;
-            if (!item.contains("field_name") ||
-                !item.contains("suggested_name") ||
-                !item.contains("suggested_type")) continue;
-            FieldImprovement imp;
-            imp.field_name     = item["field_name"].get<std::string>();
-            imp.suggested_name = item["suggested_name"].get<std::string>();
-            imp.suggested_type = item["suggested_type"].get<std::string>();
-            result.improvements.push_back(std::move(imp));
+        if (content.contains("improvements") && content["improvements"].is_array()) {
+            for (const auto& item : content["improvements"]) {
+                if (result.improvements.size() >= kMaxProposals) break;
+                if (!item.contains("field_name") ||
+                    !item.contains("suggested_name") ||
+                    !item.contains("suggested_type")) continue;
+                FieldImprovement imp;
+                imp.field_name     = item["field_name"].get<std::string>();
+                imp.suggested_name = item["suggested_name"].get<std::string>();
+                imp.suggested_type = item["suggested_type"].get<std::string>();
+                result.improvements.push_back(std::move(imp));
+            }
         }
+    } catch (const nlohmann::json::exception& e) {
+        return mondoc::unexpected<LlmError>(LlmError::badResponse(e.what()));
     }
 
     return result;
@@ -111,7 +85,7 @@ AiFieldDetector::detect(const std::string& documentText,
             nlohmann::json{{"role", "system"}, {"content", std::string(kDetectSystemPrompt)}},
             nlohmann::json{{"role", "user"},   {"content", buildDetectUserPrompt(documentText, existingFields)}},
         })},
-        {"response_format", buildJsonSchemaResponseFormat("field_detection", kDetectJsonSchema)},
+        {"response_format", detail::buildJsonSchemaResponseFormat("field_detection", kDetectJsonSchema)},
         {"temperature", 0.0},
         {"stream", false},
     };
@@ -123,7 +97,7 @@ AiFieldDetector::detect(const std::string& documentText,
         return mondoc::unexpected<LlmError>(LlmError::cancelled());
     }
 
-    auto contentOrErr = parseChatCompletionContent(*resp);
+    auto contentOrErr = detail::parseChatCompletionContent(*resp);
     if (!contentOrErr) return mondoc::unexpected<LlmError>(contentOrErr.error());
 
     return parseDetectionResult(*contentOrErr);

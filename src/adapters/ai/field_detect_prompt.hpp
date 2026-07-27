@@ -20,7 +20,6 @@ inline constexpr std::string_view kDetectSystemPrompt =
     "Include low-salience fields such as checkboxes, reference numbers, and "
     "version indicators when they are genuine fillable fields in the document.";
 
-namespace {
 inline std::string fieldTypeToLowercase(mondoc::domain::FieldType t) {
     using mondoc::domain::FieldType;
     switch (t) {
@@ -32,7 +31,6 @@ inline std::string fieldTypeToLowercase(mondoc::domain::FieldType t) {
         default:                   return "text";
     }
 }
-}  // namespace
 
 inline std::string buildDetectUserPrompt(const std::string& docText,
                                           const std::vector<mondoc::domain::Field>& existing) {

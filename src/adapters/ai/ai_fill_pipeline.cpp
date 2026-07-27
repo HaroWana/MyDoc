@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "detail/ai_json.hpp"
 #include "pass1_prompt.hpp"
 #include "pass2_prompt.hpp"
 #include "refine_prompt.hpp"
@@ -19,70 +20,13 @@ namespace mondoc::adapters::ai {
 
 namespace {
 
-std::string normalizeDateValue(const std::string& v) {
-    std::smatch m;
-    std::regex re(R"((\d{4})-(\d{1,2})-(\d{1,2}))");
-    if (std::regex_search(v, m, re)) {
-        char buf[11];
-        std::snprintf(buf, sizeof(buf), "%s-%02d-%02d",
-                      m[1].str().c_str(),
-                      std::stoi(m[2].str()),
-                      std::stoi(m[3].str()));
-        return buf;
-    }
-    return v;
-}
-
-std::string normalizeNumberValue(const std::string& v) {
-    std::string digits;
-    for (char c : v) {
-        if (std::isdigit(static_cast<unsigned char>(c)) || c == '-' || c == '.') {
-            digits += c;
-        }
-    }
-    return digits.empty() ? v : digits;
-}
+constexpr std::size_t kMaxFacts = 200;
 
 std::string normalizeForFieldType(mondoc::domain::FieldType t, const std::string& v) {
     using mondoc::domain::FieldType;
-    if (t == FieldType::Date)   return normalizeDateValue(v);
-    if (t == FieldType::Number) return normalizeNumberValue(v);
+    if (t == FieldType::Date)   return AiFillPipeline::normalizeDateValue(v);
+    if (t == FieldType::Number) return AiFillPipeline::normalizeNumberValue(v);
     return v;
-}
-
-// Extracts the inner structured-output JSON from a chat completion envelope:
-//   {"choices":[{"message":{"content":"<inner-json-string>"}}]}
-// Returns LlmError::BadResponse on any parse failure or missing field.
-mondoc::expected<nlohmann::json, LlmError>
-parseChatCompletionContent(const std::string& body) {
-    try {
-        auto outer = nlohmann::json::parse(body);
-        if (!outer.contains("choices") || !outer["choices"].is_array() ||
-            outer["choices"].empty()) {
-            return mondoc::unexpected<LlmError>(LlmError::badResponse("missing choices"));
-        }
-        const auto& msg = outer["choices"][0];
-        if (!msg.contains("message") ||
-            !msg["message"].contains("content") ||
-            !msg["message"]["content"].is_string()) {
-            return mondoc::unexpected<LlmError>(LlmError::badResponse("missing content"));
-        }
-        return nlohmann::json::parse(msg["message"]["content"].get<std::string>());
-    } catch (const nlohmann::json::exception& e) {
-        return mondoc::unexpected<LlmError>(LlmError::badResponse(e.what()));
-    }
-}
-
-nlohmann::json buildJsonSchemaResponseFormat(std::string_view name,
-                                             std::string_view schemaLiteral) {
-    return nlohmann::json{
-        {"type", "json_schema"},
-        {"json_schema", {
-            {"name", std::string(name)},
-            {"strict", true},
-            {"schema", nlohmann::json::parse(schemaLiteral)},
-        }},
-    };
 }
 
 }  // namespace
@@ -96,28 +40,54 @@ mondoc::domain::Confidence parseConfidence(std::string_view s) noexcept {
 AiFillPipeline::AiFillPipeline(ILlmClient& client, LlmConfig config) noexcept
     : client_(client), config_(std::move(config)) {}
 
+std::string AiFillPipeline::normalizeDateValue(const std::string& v) {
+    static const std::regex re(R"((\d{4})-(\d{1,2})-(\d{1,2}))");
+    std::smatch m;
+    if (std::regex_search(v, m, re)) {
+        const int month = std::stoi(m[2].str());
+        const int day   = std::stoi(m[3].str());
+        if (month < 1 || month > 12 || day < 1 || day > 31) {
+            return v;
+        }
+        char buf[11];
+        std::snprintf(buf, sizeof(buf), "%s-%02d-%02d", m[1].str().c_str(), month, day);
+        return buf;
+    }
+    return v;
+}
+
+std::string AiFillPipeline::normalizeNumberValue(const std::string& v) {
+    std::string out;
+    bool seenMinus = false;
+    bool seenDot   = false;
+    for (char c : v) {
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+            out += c;
+        } else if (c == '-' && out.empty() && !seenMinus) {
+            out += c;
+            seenMinus = true;
+        } else if (c == '.' && !seenDot) {
+            out += c;
+            seenDot = true;
+        }
+    }
+    return out.empty() ? v : out;
+}
+
 std::vector<ExtractedFact>
 AiFillPipeline::validatePass1Facts(const std::string& jsonContent,
                                    const std::vector<AiFillSourceDoc>& sources) {
     std::vector<ExtractedFact> accepted;
+    auto contentOrErr = detail::parseChatCompletionContent(jsonContent);
+    if (!contentOrErr) return accepted;
+    const auto& inner = *contentOrErr;
     try {
-        auto outer = nlohmann::json::parse(jsonContent);
-        if (!outer.contains("choices") || !outer["choices"].is_array() ||
-            outer["choices"].empty()) {
-            return accepted;
-        }
-        const auto& message = outer["choices"][0];
-        if (!message.contains("message") ||
-            !message["message"].contains("content") ||
-            !message["message"]["content"].is_string()) {
-            return accepted;
-        }
-        auto inner = nlohmann::json::parse(message["message"]["content"].get<std::string>());
         if (!inner.contains("facts") || !inner["facts"].is_array()) {
             return accepted;
         }
 
         for (const auto& item : inner["facts"]) {
+            if (accepted.size() >= kMaxFacts) break;
             auto source_index = item.value("source_index", static_cast<std::int64_t>(-1));
             auto char_start   = item.value("char_start",   static_cast<std::int64_t>(-1));
             auto char_end     = item.value("char_end",     static_cast<std::int64_t>(-1));
@@ -178,19 +148,18 @@ AiFillPipeline::run(const RunInput& input, const std::atomic<bool>& cancelled) {
             nlohmann::json{{"role","system"},{"content", std::string(kPass1SystemPrompt)}},
             nlohmann::json{{"role","user"},  {"content", buildPass1UserPrompt(input.sources_, input.free_form_text_)}},
         })},
-        {"response_format", buildJsonSchemaResponseFormat("pass1", kPass1JsonSchema)},
+        {"response_format", detail::buildJsonSchemaResponseFormat("pass1", kPass1JsonSchema)},
         {"temperature", 0.0},
         {"stream", false},
     };
 
     auto pass1Resp = client_.chat(pass1Body.dump());
     if (!pass1Resp) return mondoc::unexpected<LlmError>(pass1Resp.error());
-
-    auto facts = validatePass1Facts(*pass1Resp, input.sources_);
-
     if (cancelled.load()) {
         return mondoc::unexpected<LlmError>(LlmError::cancelled());
     }
+
+    auto facts = validatePass1Facts(*pass1Resp, input.sources_);
 
     nlohmann::json pass2Body = {
         {"model", config_.model},
@@ -198,64 +167,74 @@ AiFillPipeline::run(const RunInput& input, const std::atomic<bool>& cancelled) {
             nlohmann::json{{"role","system"},{"content", std::string(kPass2SystemPrompt)}},
             nlohmann::json{{"role","user"},  {"content", buildPass2UserPrompt(*input.tpl_, facts)}},
         })},
-        {"response_format", buildJsonSchemaResponseFormat("pass2", kPass2JsonSchema)},
+        {"response_format", detail::buildJsonSchemaResponseFormat("pass2", kPass2JsonSchema)},
         {"temperature", 0.0},
         {"stream", false},
     };
 
     auto pass2Resp = client_.chat(pass2Body.dump());
     if (!pass2Resp) return mondoc::unexpected<LlmError>(pass2Resp.error());
+    if (cancelled.load()) {
+        return mondoc::unexpected<LlmError>(LlmError::cancelled());
+    }
 
-    auto contentOrErr = parseChatCompletionContent(*pass2Resp);
+    auto contentOrErr = detail::parseChatCompletionContent(*pass2Resp);
     if (!contentOrErr) return mondoc::unexpected<LlmError>(contentOrErr.error());
     auto content = *contentOrErr;
 
-    std::unordered_map<std::string, nlohmann::json> fillsByFieldId;
-    if (content.contains("fills") && content["fills"].is_array()) {
-        for (const auto& f : content["fills"]) {
-            fillsByFieldId[f.value("field_id", std::string{})] = f;
-        }
-    }
-
-    std::vector<mondoc::domain::Fill> result;
-    result.reserve(input.tpl_->fields_.size());
-    for (const auto& field : input.tpl_->fields_) {
-        mondoc::domain::Fill fill;
-        fill.field_id_ = field.id_;
-
-        auto it = fillsByFieldId.find(field.id_.value());
-        if (it == fillsByFieldId.end()) {
-            fill.current_value_ = "";
-            fill.confidence_    = mondoc::domain::Confidence::Low;
-            result.push_back(std::move(fill));
-            continue;
-        }
-
-        const auto& entry = it->second;
-        auto rawValue = entry.value("value", std::string{});
-        fill.current_value_ = normalizeForFieldType(field.type_, rawValue);
-        fill.confidence_    = parseConfidence(entry.value("confidence", std::string{}));
-
-        auto factIndex = entry.value("fact_index", static_cast<std::int64_t>(-1));
-        if (factIndex >= 0 && static_cast<std::size_t>(factIndex) < facts.size()) {
-            const auto& fact = facts[static_cast<std::size_t>(factIndex)];
-            if (fact.source_index_ < input.sources_.size()) {
-                mondoc::domain::SourceRef ref;
-                ref.source_id_ = input.sources_[fact.source_index_].id_;
-                ref.range_.begin_ = fact.char_start_;
-                ref.range_.end_   = fact.char_end_;
-                ref.excerpt_      = fact.excerpt_;
-                fill.source_refs_.push_back(std::move(ref));
+    // SAI-4: a schema-ignoring server can send non-string field_id/value; any
+    // nlohmann type_error while mapping the response is reported as
+    // LlmError::BadResponse instead of propagating out of this worker-thread call.
+    try {
+        std::unordered_map<std::string, nlohmann::json> fillsByFieldId;
+        if (content.contains("fills") && content["fills"].is_array()) {
+            for (const auto& f : content["fills"]) {
+                fillsByFieldId[f.value("field_id", std::string{})] = f;
             }
         }
 
-        result.push_back(std::move(fill));
+        std::vector<mondoc::domain::Fill> result;
+        result.reserve(input.tpl_->fields_.size());
+        for (const auto& field : input.tpl_->fields_) {
+            mondoc::domain::Fill fill;
+            fill.field_id_ = field.id_;
+
+            auto it = fillsByFieldId.find(field.id_.value());
+            if (it == fillsByFieldId.end()) {
+                fill.current_value_ = "";
+                fill.confidence_    = mondoc::domain::Confidence::Low;
+                result.push_back(std::move(fill));
+                continue;
+            }
+
+            const auto& entry = it->second;
+            auto rawValue = entry.value("value", std::string{});
+            fill.current_value_ = normalizeForFieldType(field.type_, rawValue);
+            fill.confidence_    = parseConfidence(entry.value("confidence", std::string{}));
+
+            auto factIndex = entry.value("fact_index", static_cast<std::int64_t>(-1));
+            if (factIndex >= 0 && static_cast<std::size_t>(factIndex) < facts.size()) {
+                const auto& fact = facts[static_cast<std::size_t>(factIndex)];
+                if (fact.source_index_ < input.sources_.size()) {
+                    mondoc::domain::SourceRef ref;
+                    ref.source_id_ = input.sources_[fact.source_index_].id_;
+                    ref.range_.begin_ = fact.char_start_;
+                    ref.range_.end_   = fact.char_end_;
+                    ref.excerpt_      = fact.excerpt_;
+                    fill.source_refs_.push_back(std::move(ref));
+                }
+            }
+
+            result.push_back(std::move(fill));
+        }
+        return result;
+    } catch (const nlohmann::json::exception& e) {
+        return mondoc::unexpected<LlmError>(LlmError::badResponse(e.what()));
     }
-    return result;
 }
 
 mondoc::expected<std::vector<mondoc::domain::Fill>, LlmError>
-AiFillPipeline::refine(const RefineInput& input) {
+AiFillPipeline::refine(const RefineInput& input, const std::atomic<bool>* cancelled) {
     if (input.tpl_ == nullptr || input.user_message_.empty()) {
         return mondoc::unexpected<LlmError>(
             LlmError::badResponse("missing template or message"));
@@ -269,15 +248,18 @@ AiFillPipeline::refine(const RefineInput& input) {
                 buildRefineUserPrompt(*input.tpl_, input.sources_,
                                       input.current_fills_, input.user_message_)}},
         })},
-        {"response_format", buildJsonSchemaResponseFormat("refine", kRefineJsonSchema)},
+        {"response_format", detail::buildJsonSchemaResponseFormat("refine", kRefineJsonSchema)},
         {"temperature", 0.0},
         {"stream", false},
     };
 
     auto resp = client_.chat(body.dump());
     if (!resp) return mondoc::unexpected<LlmError>(resp.error());
+    if (cancelled != nullptr && cancelled->load()) {
+        return mondoc::unexpected<LlmError>(LlmError::cancelled());
+    }
 
-    auto contentOrErr = parseChatCompletionContent(*resp);
+    auto contentOrErr = detail::parseChatCompletionContent(*resp);
     if (!contentOrErr) return mondoc::unexpected<LlmError>(contentOrErr.error());
     auto content = *contentOrErr;
 
@@ -291,19 +273,24 @@ AiFillPipeline::refine(const RefineInput& input) {
         typeByFieldId.emplace(f.id_.value(), f.type_);
     }
 
-    for (const auto& entry : content["updates"]) {
-        auto fieldId   = entry.value("field_id",   std::string{});
-        auto rawValue  = entry.value("value",      std::string{});
-        auto confidence = entry.value("confidence", std::string{});
+    // SAI-4: see run() above for rationale.
+    try {
+        for (const auto& entry : content["updates"]) {
+            auto fieldId   = entry.value("field_id",   std::string{});
+            auto rawValue  = entry.value("value",      std::string{});
+            auto confidence = entry.value("confidence", std::string{});
 
-        mondoc::domain::Fill fill;
-        fill.field_id_ = mondoc::FieldId{fieldId};
-        auto it = typeByFieldId.find(fieldId);
-        fill.current_value_ = it != typeByFieldId.end()
-            ? normalizeForFieldType(it->second, rawValue)
-            : rawValue;
-        fill.confidence_ = parseConfidence(confidence);
-        updates.push_back(std::move(fill));
+            mondoc::domain::Fill fill;
+            fill.field_id_ = mondoc::FieldId{fieldId};
+            auto it = typeByFieldId.find(fieldId);
+            fill.current_value_ = it != typeByFieldId.end()
+                ? normalizeForFieldType(it->second, rawValue)
+                : rawValue;
+            fill.confidence_ = parseConfidence(confidence);
+            updates.push_back(std::move(fill));
+        }
+    } catch (const nlohmann::json::exception& e) {
+        return mondoc::unexpected<LlmError>(LlmError::badResponse(e.what()));
     }
     return updates;
 }
