@@ -1,6 +1,7 @@
 #include "region_mark_viewer.hpp"
 
 #include "mondoc/util.hpp"
+#include "plain_text_extractor.hpp"
 
 #include <QPainter>
 #include <QMouseEvent>
@@ -8,6 +9,7 @@
 #include <QScrollArea>
 #include <QPdfDocument>
 #include <QTextBrowser>
+#include <QTextCursor>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -229,11 +231,30 @@ bool RegionMarkViewer::loadPdf(const std::filesystem::path& path) {
 }
 
 bool RegionMarkViewer::loadTextDocument(const std::filesystem::path& path) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) return false;
-    std::ostringstream ss;
-    ss << f.rdbuf();
-    const std::string content = ss.str();
+    std::string content;
+
+    const bool needsExtraction = mondoc::hasExtension(path, ".docx") ||
+                                  mondoc::hasExtension(path, ".odt") ||
+                                  mondoc::hasExtension(path, ".pdf");
+
+    if (needsExtraction) {
+        auto extracted = mondoc::adapters::formats::extractPlainText(path);
+        if (!extracted) {
+            const QString errMsg = tr("Could not read document: %1")
+                .arg(QString::fromStdString(extracted.error().message()));
+            textBrowser_->setHtml(
+                QStringLiteral("<html><body><p style=\"color:#B91C1C;font-weight:600;\">%1</p></body></html>")
+                    .arg(errMsg.toHtmlEscaped()));
+            return false;
+        }
+        content = *extracted;
+    } else {
+        std::ifstream f(path, std::ios::binary);
+        if (!f) return false;
+        std::ostringstream ss;
+        ss << f.rdbuf();
+        content = ss.str();
+    }
 
     std::string html = "<html><body>";
     std::istringstream lines(content);
@@ -264,10 +285,16 @@ void RegionMarkViewer::onRegionDrawn(const QRect& rect) {
 
 void RegionMarkViewer::onConfirmRegion() {
     if (!pdfWidget_) {
-        mondoc::domain::TextLocation tl;
-        tl.paragraph_index = 0;
-        tl.char_offset = 0;
-        pendingLocation_ = mondoc::domain::FieldLocation{std::nullopt, tl};
+        const QTextCursor cur = textBrowser_->textCursor();
+        if (cur.hasSelection()) {
+            const QString before = textBrowser_->toPlainText().left(cur.selectionStart());
+            mondoc::domain::TextLocation tl;
+            tl.char_offset = static_cast<int>(before.toUtf8().size());
+            tl.paragraph_index = static_cast<int>(before.count(QLatin1Char('\n')));
+            pendingLocation_ = mondoc::domain::FieldLocation{std::nullopt, tl};
+        } else {
+            pendingLocation_ = std::nullopt;
+        }
     }
     instructionLabel_->setVisible(false);
     namePromptLabel_->setVisible(true);
