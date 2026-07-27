@@ -1,5 +1,7 @@
 #include "sqlite_template_repository.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <SQLiteCpp/Database.h>
 #include <SQLiteCpp/Exception.h>
 #include <SQLiteCpp/Statement.h>
@@ -7,7 +9,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -18,21 +19,9 @@ namespace mondoc::adapters::storage {
 
 namespace {
 
-// path.u8string() returns UTF-8 unconditionally; path.string() uses the OS
-// native ANSI codepage on Windows and mangles non-ASCII characters.
-std::string pathToUtf8(const std::filesystem::path& p) {
-    auto u8 = p.u8string();
-    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
-}
-
 std::filesystem::path utf8ToPath(const std::string& s) {
     std::u8string u8(reinterpret_cast<const char8_t*>(s.data()), s.size());
     return std::filesystem::path(u8);
-}
-
-std::int64_t unixNowSeconds() noexcept {
-    using namespace std::chrono;
-    return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
 }
 
 std::string fieldTypeToString(mondoc::domain::FieldType t) {

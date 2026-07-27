@@ -1,12 +1,13 @@
 #include "migrations.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <SQLiteCpp/Database.h>
 #include <SQLiteCpp/Exception.h>
 #include <SQLiteCpp/Statement.h>
 #include <SQLiteCpp/Transaction.h>
 
 #include <array>
-#include <chrono>
 #include <string>
 
 namespace mondoc::adapters::storage {
@@ -94,11 +95,6 @@ constexpr std::array<Migration, 6> kMigrations{
     Migration{5, kV5Sql},
     Migration{6, kV6Sql},
 };
-
-std::int64_t unixNowSeconds() noexcept {
-    using namespace std::chrono;
-    return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
-}
 
 }  // namespace
 

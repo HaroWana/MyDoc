@@ -1,14 +1,14 @@
 #include "mondoc_bundle_reader.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <nlohmann/json.hpp>
-#include <uuid.h>
 #include <zip.h>
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <optional>
-#include <random>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -19,23 +19,6 @@ namespace mondoc::adapters::formats {
 namespace {
 
 constexpr zip_uint64_t kMaxBundleBytes = 50ULL * 1024 * 1024;  // 50 MB DoS guard
-
-std::string pathToUtf8(const std::filesystem::path& p) {
-    auto u8 = p.u8string();
-    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
-}
-
-std::string generateUuid() {
-    static thread_local std::mt19937 generator{[] {
-        std::random_device rd;
-        std::array<std::seed_seq::result_type, std::mt19937::state_size> seed{};
-        std::generate(seed.begin(), seed.end(), std::ref(rd));
-        std::seed_seq seq(seed.begin(), seed.end());
-        return std::mt19937{seq};
-    }()};
-    uuids::uuid_random_generator gen{generator};
-    return uuids::to_string(gen());
-}
 
 bool isValidEntryName(const std::string& name) {
     if (name.empty()) return false;

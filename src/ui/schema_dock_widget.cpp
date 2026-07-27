@@ -1,5 +1,7 @@
 #include "schema_dock_widget.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <QComboBox>
 #include <QFontDatabase>
 #include <QFrame>
@@ -14,11 +16,6 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
-#include <uuid.h>
-
-#include <algorithm>
-#include <array>
-#include <random>
 #include <string>
 
 #include "ai_field_detect_worker.hpp"
@@ -32,18 +29,6 @@ constexpr int kFieldIdRole       = Qt::UserRole + 1;
 constexpr int kRowStateRole      = Qt::UserRole + 2;  // 0=Normal, 1=AiNew, 2=AiImproved
 constexpr int kSuggestedNameRole = Qt::UserRole + 3;
 constexpr int kSuggestedTypeRole = Qt::UserRole + 4;
-
-std::string generateUuid() {
-    static thread_local std::mt19937 generator{[] {
-        std::random_device rd;
-        std::array<std::seed_seq::result_type, std::mt19937::state_size> seed{};
-        std::generate(seed.begin(), seed.end(), std::ref(rd));
-        std::seed_seq seq(seed.begin(), seed.end());
-        return std::mt19937{seq};
-    }()};
-    uuids::uuid_random_generator gen{generator};
-    return uuids::to_string(gen());
-}
 
 QStringList typeNames() {
     return {

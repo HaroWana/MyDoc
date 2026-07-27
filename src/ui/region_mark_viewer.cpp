@@ -1,5 +1,7 @@
 #include "region_mark_viewer.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <QPainter>
 #include <QMouseEvent>
 #include <QPaintEvent>
@@ -162,8 +164,7 @@ RegionMarkViewer::RegionMarkViewer(const std::filesystem::path& sourcePath,
     scrollArea_->setWidgetResizable(false);
     scrollArea_->setContentsMargins(0, 0, 0, 0);
 
-    const std::string ext = sourcePath_.extension().string();
-    const bool isPdf = (ext == ".pdf" || ext == ".PDF");
+    const bool isPdf = mondoc::hasExtension(sourcePath_, ".pdf");
 
     if (isPdf) {
         pdfWidget_ = new PdfPageWidget(this);

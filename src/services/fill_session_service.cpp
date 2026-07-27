@@ -1,18 +1,16 @@
 #include "fill_session_service.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <pugixml.hpp>
-#include <uuid.h>
 #include <zip.h>
 
-#include <algorithm>
 #include <array>
-#include <cctype>
 #include <cstdint>
 #include <functional>
 #include <fstream>
 #include <ios>
 #include <iterator>
-#include <random>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -32,30 +30,6 @@ namespace mondoc::services {
 namespace {
 
 constexpr std::uintmax_t kMaxSourceBytes = 50ULL * 1024 * 1024;  // 50 MB
-
-std::string generateUuid() {
-    static thread_local std::mt19937 generator{[] {
-        std::random_device rd;
-        std::array<std::seed_seq::result_type, std::mt19937::state_size> seed{};
-        std::generate(seed.begin(), seed.end(), std::ref(rd));
-        std::seed_seq seq(seed.begin(), seed.end());
-        return std::mt19937{seq};
-    }()};
-    uuids::uuid_random_generator gen{generator};
-    return uuids::to_string(gen());
-}
-
-std::string lowercaseExtension(const std::filesystem::path& path) {
-    auto ext = path.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return ext;
-}
-
-std::string pathToUtf8(const std::filesystem::path& p) {
-    auto u8 = p.u8string();
-    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
-}
 
 void collectParagraphText(const pugi::xml_node& node, std::string& para) {
     for (pugi::xml_node child : node.children()) {

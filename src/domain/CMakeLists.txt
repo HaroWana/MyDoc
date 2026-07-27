@@ -2,6 +2,7 @@ add_library(mondoc_domain STATIC
     mondoc/expected.hpp
     mondoc/id.hpp
     mondoc/error.hpp
+    mondoc/util.hpp
     domain/field.hpp
     domain/template.hpp
     domain/source_ref.hpp

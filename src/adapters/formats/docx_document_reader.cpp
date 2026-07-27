@@ -1,14 +1,14 @@
 #include "docx_document_reader.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <pugixml.hpp>
-#include <uuid.h>
 #include <zip.h>
 
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdint>
-#include <random>
 #include <regex>
 #include <string>
 #include <string_view>
@@ -22,31 +22,6 @@ namespace {
 
 constexpr zip_uint64_t kMaxDocxBytes = 50ULL * 1024 * 1024;  // 50 MB DoS guard
 constexpr std::size_t  kReadChunkSize = 64 * 1024;
-
-std::string pathToUtf8(const std::filesystem::path& p) {
-    auto u8 = p.u8string();
-    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
-}
-
-std::string generateUuid() {
-    static thread_local std::mt19937 generator{[] {
-        std::random_device rd;
-        std::array<std::seed_seq::result_type, std::mt19937::state_size> seed{};
-        std::generate(seed.begin(), seed.end(), std::ref(rd));
-        std::seed_seq seq(seed.begin(), seed.end());
-        return std::mt19937{seq};
-    }()};
-    uuids::uuid_random_generator gen{generator};
-    return uuids::to_string(gen());
-}
-
-bool extensionIsDocx(const std::filesystem::path& path) {
-    auto ext = path.extension().string();
-    if (ext.size() != 5) return false;
-    std::transform(ext.begin(), ext.end(), ext.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return ext == ".docx";
-}
 
 std::string normalize(std::string_view raw) {
     std::string s{raw};
@@ -216,7 +191,7 @@ unionFields(std::vector<mondoc::domain::Field> sdtFields,
 
 mondoc::expected<mondoc::domain::Template, mondoc::Error>
 DocxDocumentReader::read(const std::filesystem::path& path) {
-    if (!extensionIsDocx(path)) {
+    if (!mondoc::hasExtension(path, ".docx")) {
         return mondoc::unexpected(mondoc::Error::invalidArgument(
             "expected .docx extension"));
     }

@@ -1,5 +1,7 @@
 #include "fill_session_view.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <QAction>
 #include <QCheckBox>
 #include <QFileInfo>
@@ -14,11 +16,6 @@
 #include <QThread>
 #include <QUndoStack>
 #include <QVBoxLayout>
-
-#include <array>
-#include <random>
-
-#include <uuid.h>
 
 #include "ai_fill_worker.hpp"
 #include "chat_pane.hpp"
@@ -35,18 +32,6 @@ QString pathToQString(const std::filesystem::path& p) {
 }
 
 }  // namespace
-
-std::string FillSessionView::generateUuid() {
-    static thread_local std::mt19937 generator{[] {
-        std::random_device rd;
-        std::array<std::seed_seq::result_type, std::mt19937::state_size> seed{};
-        std::generate(seed.begin(), seed.end(), std::ref(rd));
-        std::seed_seq seq(seed.begin(), seed.end());
-        return std::mt19937{seq};
-    }()};
-    uuids::uuid_random_generator gen{generator};
-    return uuids::to_string(gen());
-}
 
 FillSessionView::FillSessionView(mondoc::services::FillSessionService& service,
                                  mondoc::domain::ITemplateRepository& templateRepo,

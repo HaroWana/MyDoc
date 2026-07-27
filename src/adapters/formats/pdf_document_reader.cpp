@@ -1,13 +1,12 @@
 #include "pdf_document_reader.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <podofo/podofo.h>
-#include <uuid.h>
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <filesystem>
-#include <random>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -17,23 +16,6 @@
 namespace mondoc::adapters::formats {
 
 namespace {
-
-std::string pathToUtf8(const std::filesystem::path& p) {
-    auto u8 = p.u8string();
-    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
-}
-
-std::string generateUuid() {
-    static thread_local std::mt19937 generator{[] {
-        std::random_device rd;
-        std::array<std::seed_seq::result_type, std::mt19937::state_size> seed{};
-        std::generate(seed.begin(), seed.end(), std::ref(rd));
-        std::seed_seq seq(seed.begin(), seed.end());
-        return std::mt19937{seq};
-    }()};
-    uuids::uuid_random_generator gen{generator};
-    return uuids::to_string(gen());
-}
 
 std::string normalize(std::string_view raw) {
     std::string s{raw};
@@ -47,19 +29,11 @@ std::string normalize(std::string_view raw) {
     return s;
 }
 
-bool extensionIsPdf(const std::filesystem::path& path) {
-    auto ext = path.extension().string();
-    if (ext.size() != 4) return false;
-    std::transform(ext.begin(), ext.end(), ext.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return ext == ".pdf";
-}
-
 }  // namespace
 
 mondoc::expected<mondoc::domain::Template, mondoc::Error>
 PdfDocumentReader::read(const std::filesystem::path& path) {
-    if (!extensionIsPdf(path)) {
+    if (!mondoc::hasExtension(path, ".pdf")) {
         return mondoc::unexpected(mondoc::Error::invalidArgument(
             "PdfDocumentReader: expected .pdf, got " + path.extension().string()));
     }

@@ -1,5 +1,7 @@
 #include "pdf_document_writer.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <podofo/podofo.h>
 
 #include <algorithm>
@@ -10,11 +12,6 @@
 namespace mondoc::adapters::formats {
 
 namespace {
-
-std::string pathToUtf8(const std::filesystem::path& p) {
-    auto u8 = p.u8string();
-    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
-}
 
 const mondoc::domain::Field*
 findField(const mondoc::domain::Template& tpl, const mondoc::FieldId& id) {

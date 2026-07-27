@@ -1,5 +1,7 @@
 #include "mondoc_bundle_writer.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <nlohmann/json.hpp>
 #include <zip.h>
 
@@ -17,11 +19,6 @@
 namespace mondoc::adapters::formats {
 
 namespace {
-
-std::string pathToUtf8(const std::filesystem::path& p) {
-    auto u8 = p.u8string();
-    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
-}
 
 std::string isoTimestamp() {
     auto now = std::chrono::system_clock::now();

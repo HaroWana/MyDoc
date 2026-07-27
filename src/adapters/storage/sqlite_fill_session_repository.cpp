@@ -1,11 +1,12 @@
 #include "sqlite_fill_session_repository.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <SQLiteCpp/Database.h>
 #include <SQLiteCpp/Exception.h>
 #include <SQLiteCpp/Statement.h>
 #include <SQLiteCpp/Transaction.h>
 
-#include <chrono>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -14,11 +15,6 @@
 namespace mondoc::adapters::storage {
 
 namespace {
-
-std::int64_t unixNowSeconds() noexcept {
-    using namespace std::chrono;
-    return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
-}
 
 std::string fillStatusToString(mondoc::domain::FillStatus s) {
     using mondoc::domain::FillStatus;

@@ -1,15 +1,13 @@
 #include "plain_text_document_reader.hpp"
 
-#include <uuid.h>
+#include "mondoc/util.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstddef>
 #include <fstream>
 #include <ios>
 #include <iterator>
-#include <random>
 #include <regex>
 #include <string>
 #include <string_view>
@@ -22,25 +20,6 @@ namespace mondoc::adapters::formats {
 namespace {
 
 constexpr std::uintmax_t kMaxFileBytes = 50ULL * 1024 * 1024;  // 50 MB DoS guard
-
-std::string generateUuid() {
-    static thread_local std::mt19937 generator{[] {
-        std::random_device rd;
-        std::array<std::seed_seq::result_type, std::mt19937::state_size> seed{};
-        std::generate(seed.begin(), seed.end(), std::ref(rd));
-        std::seed_seq seq(seed.begin(), seed.end());
-        return std::mt19937{seq};
-    }()};
-    uuids::uuid_random_generator gen{generator};
-    return uuids::to_string(gen());
-}
-
-std::string lowercaseExtension(const std::filesystem::path& path) {
-    auto ext = path.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return ext;
-}
 
 std::string normalize(std::string_view raw) {
     std::string s{raw};

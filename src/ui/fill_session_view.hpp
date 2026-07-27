@@ -60,8 +60,6 @@ private slots:
     void onChatRefineFailed(QString message);
 
 private:
-    static std::string generateUuid();
-
     void buildToolbar(QWidget* host);
     void buildSplitter(QWidget* host);
     void buildRightPane(QWidget* host);

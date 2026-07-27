@@ -1,5 +1,7 @@
 #include "odt_document_writer.hpp"
 
+#include "mondoc/util.hpp"
+
 #include <pugixml.hpp>
 #include <zip.h>
 
@@ -24,11 +26,6 @@ namespace {
 
 constexpr zip_uint64_t kMaxOdtBytes = 50ULL * 1024 * 1024;
 constexpr std::size_t  kReadChunkSize = 64 * 1024;
-
-std::string pathToUtf8(const std::filesystem::path& p) {
-    auto u8 = p.u8string();
-    return std::string(reinterpret_cast<const char*>(u8.data()), u8.size());
-}
 
 std::string normalize(std::string_view raw) {
     std::string s{raw};
