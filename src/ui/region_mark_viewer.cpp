@@ -181,9 +181,13 @@ RegionMarkViewer::RegionMarkViewer(const std::filesystem::path& sourcePath,
     } else {
         textBrowser_->setReadOnly(true);
         scrollArea_->setWidget(textBrowser_);
-        loadTextDocument(sourcePath_);
+        const bool loaded = loadTextDocument(sourcePath_);
         confirmRegionBtn_->setText(tr("Mark Location"));
-        confirmRegionBtn_->setEnabled(true);
+        confirmRegionBtn_->setEnabled(loaded);
+        if (!loaded) {
+            confirmRegionBtn_->setToolTip(
+                tr("The document could not be read, so a location cannot be marked."));
+        }
     }
 
     auto* btnRow = new QHBoxLayout;
@@ -256,21 +260,11 @@ bool RegionMarkViewer::loadTextDocument(const std::filesystem::path& path) {
         content = ss.str();
     }
 
-    std::string html = "<html><body>";
-    std::istringstream lines(content);
-    std::string line;
-    while (std::getline(lines, line)) {
-        std::string escaped;
-        for (char c : line) {
-            if (c == '<') escaped += "&lt;";
-            else if (c == '>') escaped += "&gt;";
-            else if (c == '&') escaped += "&amp;";
-            else escaped += c;
-        }
-        html += "<p>" + escaped + "</p>";
-    }
-    html += "</body></html>";
-    textBrowser_->setHtml(QString::fromStdString(html));
+    // Plain text, not HTML: toPlainText() must reproduce `content` byte-for-byte
+    // so onConfirmRegion's offset math stays aligned with extractPlainText()'s
+    // output. HTML rendering (previously used) collapses whitespace runs and
+    // loses inter-paragraph spacing as a visual affordance in exchange.
+    textBrowser_->setPlainText(QString::fromStdString(content));
     return true;
 }
 
