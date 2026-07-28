@@ -22,8 +22,8 @@ private:
         QString licenseFile;
     };
 
-    QListWidget* libraryList_;
-    QTextBrowser* licenseView_;
+    QListWidget* library_list_;
+    QTextBrowser* license_view_;
     QList<LibraryEntry> libraries_;
 };
 

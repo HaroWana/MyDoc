@@ -53,15 +53,15 @@ private:
 
     QScrollArea* scroll_;
     QWidget* form_;
-    QVBoxLayout* formLayout_;
-    QUndoStack* undoStack_ = nullptr;
+    QVBoxLayout* form_layout_;
+    QUndoStack* undo_stack_ = nullptr;
     mondoc::services::FillSessionService* service_ = nullptr;
-    mondoc::FillSessionId sessionId_;
-    std::unordered_map<std::string, QString> lastCommitted_;
-    std::unordered_map<std::string, QTimer*> textEditTimers_;
-    std::unordered_map<std::string, std::vector<mondoc::domain::SourceRef>> sourceRefsByField_;
-    std::unordered_map<QObject*, mondoc::FieldId> inputToFieldId_;
-    std::unordered_map<std::string, QWidget*> inputByField_;
+    mondoc::FillSessionId session_id_;
+    std::unordered_map<std::string, QString> last_committed_;
+    std::unordered_map<std::string, QTimer*> text_edit_timers_;
+    std::unordered_map<std::string, std::vector<mondoc::domain::SourceRef>> source_refs_by_field_;
+    std::unordered_map<QObject*, mondoc::FieldId> input_to_field_id_;
+    std::unordered_map<std::string, QWidget*> input_by_field_;
 };
 
 }  // namespace mondoc::ui

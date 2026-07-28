@@ -15,8 +15,8 @@ AiFieldDetectWorker::AiFieldDetectWorker(
         QObject* parent)
     : QObject(parent),
       detector_(detector),
-      documentText_(std::move(documentText)),
-      existingFields_(std::move(existingFields)) {}
+      document_text_(std::move(documentText)),
+      existing_fields_(std::move(existingFields)) {}
 
 void AiFieldDetectWorker::requestCancel() noexcept {
     cancelled_.store(true, std::memory_order_relaxed);
@@ -24,7 +24,7 @@ void AiFieldDetectWorker::requestCancel() noexcept {
 
 void AiFieldDetectWorker::run() {
     qInfo("AiFieldDetectWorker::run started");
-    auto result = detector_.detect(documentText_, existingFields_, cancelled_);
+    auto result = detector_.detect(document_text_, existing_fields_, cancelled_);
     if (result) {
         qInfo("AiFieldDetectWorker::run finished");
         emit proposalsReady(std::move(result->new_fields), std::move(result->improvements));

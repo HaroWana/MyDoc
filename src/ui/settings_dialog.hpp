@@ -22,13 +22,13 @@ private slots:
     void onSave();
 
 private:
-    QLineEdit* urlEdit_;
-    QLineEdit* keyEdit_;
-    QLineEdit* modelEdit_;
-    QLabel* helperLabel_;
-    QLabel* errorLabel_;
+    QLineEdit* url_edit_;
+    QLineEdit* key_edit_;
+    QLineEdit* model_edit_;
+    QLabel* helper_label_;
+    QLabel* error_label_;
     QDialogButtonBox* buttons_;
-    std::filesystem::path configPath_;
+    std::filesystem::path config_path_;
 };
 
 }  // namespace mondoc::ui

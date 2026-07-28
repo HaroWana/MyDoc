@@ -34,9 +34,9 @@ signals:
 
 private:
     mondoc::services::FillSessionService& service_;
-    mondoc::FillSessionId sessionId_;
+    mondoc::FillSessionId session_id_;
     std::vector<mondoc::domain::AiSourceDoc> sources_;
-    std::string freeFormText_;
+    std::string free_form_text_;
     std::atomic<bool> cancelled_{false};
 };
 

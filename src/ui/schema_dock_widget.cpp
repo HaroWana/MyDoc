@@ -129,15 +129,15 @@ public:
 SchemaDockWidget::SchemaDockWidget(QWidget* parent)
     : QDockWidget(parent),
       table_(new QTableWidget(this)),
-      addFieldBtn_(new QPushButton(tr("Add Field"))),
-      removeFieldBtn_(new QPushButton(tr("Remove Selected Field"))),
-      discardBtn_(new QPushButton(tr("Discard Changes"))),
-      saveBtn_(new QPushButton(tr("Save Schema"))),
-      detectWithAiBtn_(new QPushButton(tr("Detect with AI"))),
-      acceptProposalBtn_(new QPushButton(tr("Accept"))),
-      discardProposalBtn_(new QPushButton(tr("Discard"))),
-      aiStatusLabel_(new QLabel(tr("Detecting fields\xe2\x80\xa6"))),
-      aiErrorLabel_(new QLabel()) {
+      add_field_btn_(new QPushButton(tr("Add Field"))),
+      remove_field_btn_(new QPushButton(tr("Remove Selected Field"))),
+      discard_btn_(new QPushButton(tr("Discard Changes"))),
+      save_btn_(new QPushButton(tr("Save Schema"))),
+      detect_with_ai_btn_(new QPushButton(tr("Detect with AI"))),
+      accept_proposal_btn_(new QPushButton(tr("Accept"))),
+      discard_proposal_btn_(new QPushButton(tr("Discard"))),
+      ai_status_label_(new QLabel(tr("Detecting fields\xe2\x80\xa6"))),
+      ai_error_label_(new QLabel()) {
     setMinimumWidth(320);
     setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
 
@@ -152,33 +152,33 @@ SchemaDockWidget::SchemaDockWidget(QWidget* parent)
     table_->setItemDelegateForColumn(1, new FieldTypeDelegate(this));
     table_->setAccessibleName(tr("Schema fields"));
 
-    saveBtn_->setStyleSheet(accentButtonStyle());
-    saveBtn_->setAccessibleName(tr("Save Schema"));
-    discardBtn_->setAccessibleName(tr("Discard Changes"));
-    addFieldBtn_->setAccessibleName(tr("Add Field"));
-    removeFieldBtn_->setAccessibleName(tr("Remove Selected Field"));
-    removeFieldBtn_->setToolTip(tr("Remove Selected Field"));
-    removeFieldBtn_->setEnabled(false);
+    save_btn_->setStyleSheet(accentButtonStyle());
+    save_btn_->setAccessibleName(tr("Save Schema"));
+    discard_btn_->setAccessibleName(tr("Discard Changes"));
+    add_field_btn_->setAccessibleName(tr("Add Field"));
+    remove_field_btn_->setAccessibleName(tr("Remove Selected Field"));
+    remove_field_btn_->setToolTip(tr("Remove Selected Field"));
+    remove_field_btn_->setEnabled(false);
 
-    detectWithAiBtn_->setStyleSheet(accentButtonStyle());
-    detectWithAiBtn_->setAccessibleName(tr("Detect with AI"));
-    detectWithAiBtn_->setEnabled(false);
-    detectWithAiBtn_->setToolTip(
+    detect_with_ai_btn_->setStyleSheet(accentButtonStyle());
+    detect_with_ai_btn_->setAccessibleName(tr("Detect with AI"));
+    detect_with_ai_btn_->setEnabled(false);
+    detect_with_ai_btn_->setToolTip(
         tr("Configure the LLM endpoint in Settings to enable AI detection."));
 
-    acceptProposalBtn_->setStyleSheet(accentButtonStyle());
-    acceptProposalBtn_->setAccessibleName(tr("Accept"));
-    acceptProposalBtn_->setVisible(false);
+    accept_proposal_btn_->setStyleSheet(accentButtonStyle());
+    accept_proposal_btn_->setAccessibleName(tr("Accept"));
+    accept_proposal_btn_->setVisible(false);
 
-    discardProposalBtn_->setAccessibleName(tr("Discard"));
-    discardProposalBtn_->setVisible(false);
+    discard_proposal_btn_->setAccessibleName(tr("Discard"));
+    discard_proposal_btn_->setVisible(false);
 
-    aiStatusLabel_->setStyleSheet(QStringLiteral("color: gray; padding-right: 8px;"));
-    aiStatusLabel_->setVisible(false);
+    ai_status_label_->setStyleSheet(QStringLiteral("color: gray; padding-right: 8px;"));
+    ai_status_label_->setVisible(false);
 
-    aiErrorLabel_->setStyleSheet(QStringLiteral("color: #DC2626;"));
-    aiErrorLabel_->setVisible(false);
-    aiErrorLabel_->setWordWrap(true);
+    ai_error_label_->setStyleSheet(QStringLiteral("color: #DC2626;"));
+    ai_error_label_->setVisible(false);
+    ai_error_label_->setWordWrap(true);
 
     auto* container = new QWidget(this);
     auto* layout = new QVBoxLayout(container);
@@ -187,16 +187,16 @@ SchemaDockWidget::SchemaDockWidget(QWidget* parent)
     layout->addWidget(table_);
 
     auto* fieldRow = new QHBoxLayout();
-    fieldRow->addWidget(addFieldBtn_);
-    fieldRow->addWidget(removeFieldBtn_);
-    fieldRow->addWidget(detectWithAiBtn_);
-    fieldRow->addWidget(acceptProposalBtn_);
-    fieldRow->addWidget(discardProposalBtn_);
+    fieldRow->addWidget(add_field_btn_);
+    fieldRow->addWidget(remove_field_btn_);
+    fieldRow->addWidget(detect_with_ai_btn_);
+    fieldRow->addWidget(accept_proposal_btn_);
+    fieldRow->addWidget(discard_proposal_btn_);
     fieldRow->addStretch(1);
     layout->addLayout(fieldRow);
 
-    layout->addWidget(aiStatusLabel_);
-    layout->addWidget(aiErrorLabel_);
+    layout->addWidget(ai_status_label_);
+    layout->addWidget(ai_error_label_);
 
     auto* sep = new QFrame();
     sep->setFrameShape(QFrame::HLine);
@@ -204,24 +204,24 @@ SchemaDockWidget::SchemaDockWidget(QWidget* parent)
     layout->addWidget(sep);
 
     auto* confirmRow = new QHBoxLayout();
-    confirmRow->addWidget(discardBtn_);
+    confirmRow->addWidget(discard_btn_);
     confirmRow->addStretch(1);
-    confirmRow->addWidget(saveBtn_);
+    confirmRow->addWidget(save_btn_);
     layout->addLayout(confirmRow);
 
     setWidget(container);
 
-    connect(addFieldBtn_, &QPushButton::clicked, this, &SchemaDockWidget::onAddField);
-    connect(removeFieldBtn_, &QPushButton::clicked, this, &SchemaDockWidget::onRemoveField);
-    connect(discardBtn_, &QPushButton::clicked, this, &SchemaDockWidget::schemaDiscarded);
-    connect(saveBtn_, &QPushButton::clicked, this, &SchemaDockWidget::onSaveClicked);
+    connect(add_field_btn_, &QPushButton::clicked, this, &SchemaDockWidget::onAddField);
+    connect(remove_field_btn_, &QPushButton::clicked, this, &SchemaDockWidget::onRemoveField);
+    connect(discard_btn_, &QPushButton::clicked, this, &SchemaDockWidget::schemaDiscarded);
+    connect(save_btn_, &QPushButton::clicked, this, &SchemaDockWidget::onSaveClicked);
     connect(table_, &QTableWidget::itemSelectionChanged,
             this, &SchemaDockWidget::onSelectionChanged);
-    connect(detectWithAiBtn_, &QPushButton::clicked,
+    connect(detect_with_ai_btn_, &QPushButton::clicked,
             this, &SchemaDockWidget::onDetectWithAiClicked);
-    connect(acceptProposalBtn_, &QPushButton::clicked,
+    connect(accept_proposal_btn_, &QPushButton::clicked,
             this, &SchemaDockWidget::onAcceptProposal);
-    connect(discardProposalBtn_, &QPushButton::clicked,
+    connect(discard_proposal_btn_, &QPushButton::clicked,
             this, &SchemaDockWidget::onDiscardProposal);
 }
 
@@ -238,7 +238,7 @@ void SchemaDockWidget::shutdownThread(QThread*& t, AiFieldDetectWorker*& worker)
     if (!thread) return;
 
     // Sever delivery to `this` before anything else: kills the
-    // finished->lambda that nulls aiThread_/aiWorker_ and stops the worker's
+    // finished->lambda that nulls ai_thread_/ai_worker_ and stops the worker's
     // own result signals (proposalsReady/failed/cancelled) from reaching
     // this dock. Connections from the worker to the thread (finished ->
     // thread->quit) are left intact so the thread still exits and its
@@ -256,15 +256,15 @@ void SchemaDockWidget::shutdownThread(QThread*& t, AiFieldDetectWorker*& worker)
 }
 
 SchemaDockWidget::~SchemaDockWidget() {
-    shutdownThread(aiThread_, aiWorker_);
+    shutdownThread(ai_thread_, ai_worker_);
 }
 
 void SchemaDockWidget::setAiConfigured(bool configured) {
-    detectWithAiBtn_->setEnabled(configured);
+    detect_with_ai_btn_->setEnabled(configured);
 }
 
 void SchemaDockWidget::setDocumentText(std::string text) {
-    documentText_ = std::move(text);
+    document_text_ = std::move(text);
 }
 
 void SchemaDockWidget::setDetector(mondoc::adapters::ai::AiFieldDetector* detector) {
@@ -364,55 +364,55 @@ void SchemaDockWidget::onSaveClicked() {
 
 void SchemaDockWidget::onSelectionChanged() {
     const int row = table_->currentRow();
-    removeFieldBtn_->setEnabled(row >= 0);
+    remove_field_btn_->setEnabled(row >= 0);
     const auto state = (row >= 0 && table_->item(row, 0))
         ? static_cast<AiRowState>(table_->item(row, 0)->data(kRowStateRole).toInt())
         : AiRowState::None;
-    acceptProposalBtn_->setVisible(state != AiRowState::None);
-    discardProposalBtn_->setVisible(state != AiRowState::None);
+    accept_proposal_btn_->setVisible(state != AiRowState::None);
+    discard_proposal_btn_->setVisible(state != AiRowState::None);
 }
 
 void SchemaDockWidget::restoreIdleButton() {
-    detectWithAiBtn_->setText(tr("Detect with AI"));
-    detectWithAiBtn_->setStyleSheet(accentButtonStyle());
-    aiStatusLabel_->setVisible(false);
+    detect_with_ai_btn_->setText(tr("Detect with AI"));
+    detect_with_ai_btn_->setStyleSheet(accentButtonStyle());
+    ai_status_label_->setVisible(false);
 }
 
 void SchemaDockWidget::onDetectWithAiClicked() {
-    if (aiThread_ != nullptr) {
-        if (aiWorker_) aiWorker_->requestCancel();
+    if (ai_thread_ != nullptr) {
+        if (ai_worker_) ai_worker_->requestCancel();
         return;
     }
     if (detector_ == nullptr) return;
 
-    aiErrorLabel_->setVisible(false);
-    aiErrorLabel_->clear();
+    ai_error_label_->setVisible(false);
+    ai_error_label_->clear();
 
-    aiWorker_ = new AiFieldDetectWorker(*detector_, documentText_, currentFields());
-    aiThread_ = new QThread(this);
-    aiWorker_->moveToThread(aiThread_);
+    ai_worker_ = new AiFieldDetectWorker(*detector_, document_text_, currentFields());
+    ai_thread_ = new QThread(this);
+    ai_worker_->moveToThread(ai_thread_);
 
-    connect(aiThread_, &QThread::started, aiWorker_, &AiFieldDetectWorker::run);
-    connect(aiWorker_, &AiFieldDetectWorker::proposalsReady,
+    connect(ai_thread_, &QThread::started, ai_worker_, &AiFieldDetectWorker::run);
+    connect(ai_worker_, &AiFieldDetectWorker::proposalsReady,
             this, &SchemaDockWidget::onProposalsReady, Qt::QueuedConnection);
-    connect(aiWorker_, &AiFieldDetectWorker::failed,
+    connect(ai_worker_, &AiFieldDetectWorker::failed,
             this, &SchemaDockWidget::onDetectionFailed, Qt::QueuedConnection);
-    connect(aiWorker_, &AiFieldDetectWorker::cancelled,
+    connect(ai_worker_, &AiFieldDetectWorker::cancelled,
             this, &SchemaDockWidget::onDetectionCancelled, Qt::QueuedConnection);
-    connect(aiWorker_, &AiFieldDetectWorker::proposalsReady, aiThread_, &QThread::quit);
-    connect(aiWorker_, &AiFieldDetectWorker::failed,         aiThread_, &QThread::quit);
-    connect(aiWorker_, &AiFieldDetectWorker::cancelled,      aiThread_, &QThread::quit);
-    connect(aiThread_, &QThread::finished, aiWorker_, &QObject::deleteLater);
-    connect(aiThread_, &QThread::finished, aiThread_, &QObject::deleteLater);
-    connect(aiThread_, &QThread::finished, this, [this]() {
-        aiThread_ = nullptr;
-        aiWorker_ = nullptr;
+    connect(ai_worker_, &AiFieldDetectWorker::proposalsReady, ai_thread_, &QThread::quit);
+    connect(ai_worker_, &AiFieldDetectWorker::failed,         ai_thread_, &QThread::quit);
+    connect(ai_worker_, &AiFieldDetectWorker::cancelled,      ai_thread_, &QThread::quit);
+    connect(ai_thread_, &QThread::finished, ai_worker_, &QObject::deleteLater);
+    connect(ai_thread_, &QThread::finished, ai_thread_, &QObject::deleteLater);
+    connect(ai_thread_, &QThread::finished, this, [this]() {
+        ai_thread_ = nullptr;
+        ai_worker_ = nullptr;
     });
 
-    detectWithAiBtn_->setText(tr("Cancel"));
-    detectWithAiBtn_->setStyleSheet(QString{});
-    aiStatusLabel_->setVisible(true);
-    aiThread_->start();
+    detect_with_ai_btn_->setText(tr("Cancel"));
+    detect_with_ai_btn_->setStyleSheet(QString{});
+    ai_status_label_->setVisible(true);
+    ai_thread_->start();
 }
 
 void SchemaDockWidget::onProposalsReady(
@@ -458,9 +458,9 @@ void SchemaDockWidget::onProposalsReady(
     }
 
     if (newFields.empty() && improvements.empty()) {
-        aiStatusLabel_->setText(
+        ai_status_label_->setText(
             tr("AI found no additional fields. The detected schema looks complete."));
-        aiStatusLabel_->setVisible(true);
+        ai_status_label_->setVisible(true);
     }
 
     onSelectionChanged();
@@ -486,8 +486,8 @@ void SchemaDockWidget::onDetectionFailed(QString message, int errorKind) {
             break;
     }
 
-    aiErrorLabel_->setText(llmErrorText(mondoc::Error{kind, message.toStdString()}));
-    aiErrorLabel_->setVisible(true);
+    ai_error_label_->setText(llmErrorText(mondoc::Error{kind, message.toStdString()}));
+    ai_error_label_->setVisible(true);
 }
 
 void SchemaDockWidget::onDetectionCancelled() {

@@ -39,8 +39,8 @@ private:
 
     QPlainTextEdit* history_ = nullptr;
     QLineEdit* input_ = nullptr;
-    QPushButton* sendBtn_ = nullptr;
-    std::vector<mondoc::domain::AiExtractedFact> lastPass1Facts_;
+    QPushButton* send_btn_ = nullptr;
+    std::vector<mondoc::domain::AiExtractedFact> last_pass1_facts_;
     bool busy_ = false;
 };
 

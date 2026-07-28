@@ -14,10 +14,10 @@ AiRefineWorker::AiRefineWorker(mondoc::services::FillSessionService& service,
                                QObject* parent)
     : QObject(parent),
       service_(service),
-      sessionId_(std::move(sessionId)),
-      userMessage_(std::move(userMessage)),
+      session_id_(std::move(sessionId)),
+      user_message_(std::move(userMessage)),
       sources_(std::move(sources)),
-      lastPass1Facts_(std::move(lastPass1Facts)) {}
+      last_pass1_facts_(std::move(lastPass1Facts)) {}
 
 void AiRefineWorker::requestCancel() noexcept {
     cancelled_.store(true, std::memory_order_relaxed);
@@ -25,8 +25,8 @@ void AiRefineWorker::requestCancel() noexcept {
 
 void AiRefineWorker::run() {
     qInfo("AiRefineWorker::run started");
-    auto result = service_.refineField(sessionId_, userMessage_, sources_,
-                                        lastPass1Facts_, cancelled_);
+    auto result = service_.refineField(session_id_, user_message_, sources_,
+                                        last_pass1_facts_, cancelled_);
     if (result) {
         qInfo("AiRefineWorker::run finished");
         emit finished(std::move(*result));

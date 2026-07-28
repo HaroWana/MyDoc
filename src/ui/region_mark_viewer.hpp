@@ -38,30 +38,30 @@ private:
     bool renderPdfPage(int pageIndex);
     bool loadTextDocument(const std::filesystem::path& path);
 
-    std::filesystem::path sourcePath_;
-    QPdfDocument* pdfDoc_ = nullptr;
-    int pdfPageIndex_ = 0;
-    std::optional<mondoc::domain::FieldLocation> pendingLocation_;
-    bool regionDrawn_ = false;
+    std::filesystem::path source_path_;
+    QPdfDocument* pdf_doc_ = nullptr;
+    int pdf_page_index_ = 0;
+    std::optional<mondoc::domain::FieldLocation> pending_location_;
+    bool region_drawn_ = false;
     mondoc::domain::Field field_;
 
-    QLabel* instructionLabel_;
-    QScrollArea* scrollArea_;
-    QTextBrowser* textBrowser_;
-    PdfPageWidget* pdfWidget_;
+    QLabel* instruction_label_;
+    QScrollArea* scroll_area_;
+    QTextBrowser* text_browser_;
+    PdfPageWidget* pdf_widget_;
 
-    QLabel* namePromptLabel_;
-    QLineEdit* nameEdit_;
-    QLabel* typePromptLabel_;
-    QComboBox* typeCombo_;
+    QLabel* name_prompt_label_;
+    QLineEdit* name_edit_;
+    QLabel* type_prompt_label_;
+    QComboBox* type_combo_;
 
-    QPushButton* confirmRegionBtn_;
-    QPushButton* saveFieldBtn_;
-    QPushButton* closeBtn_;
+    QPushButton* confirm_region_btn_;
+    QPushButton* save_field_btn_;
+    QPushButton* close_btn_;
 
-    QPushButton* prevPageBtn_ = nullptr;
-    QPushButton* nextPageBtn_ = nullptr;
-    QLabel* pageIndicator_ = nullptr;
+    QPushButton* prev_page_btn_ = nullptr;
+    QPushButton* next_page_btn_ = nullptr;
+    QLabel* page_indicator_ = nullptr;
 };
 
 }  // namespace mondoc::ui

@@ -34,27 +34,27 @@ const FormatEntry kFormats[] = {
 
 ExportDialog::ExportDialog(QWidget* parent)
     : QDialog(parent),
-      formatCombo_(new QComboBox(this)),
-      destEdit_(new QLineEdit(this)),
-      browseBtn_(new QPushButton(tr("Browse\xe2\x80\xa6"), this)),
+      format_combo_(new QComboBox(this)),
+      dest_edit_(new QLineEdit(this)),
+      browse_btn_(new QPushButton(tr("Browse\xe2\x80\xa6"), this)),
       buttons_(new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
                                      this)) {
     setWindowTitle(tr("Export Document"));
     setModal(true);
 
     for (const auto& f : kFormats) {
-        formatCombo_->addItem(tr(f.label));
+        format_combo_->addItem(tr(f.label));
     }
-    destEdit_->setReadOnly(true);
-    destEdit_->setAccessibleName(tr("Export destination"));
-    formatCombo_->setAccessibleName(tr("Export format"));
-    browseBtn_->setAccessibleName(tr("Browse for export destination"));
+    dest_edit_->setReadOnly(true);
+    dest_edit_->setAccessibleName(tr("Export destination"));
+    format_combo_->setAccessibleName(tr("Export format"));
+    browse_btn_->setAccessibleName(tr("Browse for export destination"));
 
     auto* form = new QFormLayout();
-    form->addRow(tr("Format:"), formatCombo_);
+    form->addRow(tr("Format:"), format_combo_);
     auto* destRow = new QHBoxLayout();
-    destRow->addWidget(destEdit_);
-    destRow->addWidget(browseBtn_);
+    destRow->addWidget(dest_edit_);
+    destRow->addWidget(browse_btn_);
     form->addRow(tr("Destination:"), destRow);
 
     auto* root = new QVBoxLayout(this);
@@ -71,45 +71,45 @@ ExportDialog::ExportDialog(QWidget* parent)
 
     connect(buttons_, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons_, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(browseBtn_, &QPushButton::clicked, this, &ExportDialog::onBrowse);
-    connect(formatCombo_,
+    connect(browse_btn_, &QPushButton::clicked, this, &ExportDialog::onBrowse);
+    connect(format_combo_,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ExportDialog::onFormatChanged);
-    connect(destEdit_, &QLineEdit::textChanged,
+    connect(dest_edit_, &QLineEdit::textChanged,
             this, &ExportDialog::updateOkEnabled);
 
     updateOkEnabled();
 }
 
 mondoc::services::ExportFormat ExportDialog::selectedFormat() const {
-    return kFormats[formatCombo_->currentIndex()].format;
+    return kFormats[format_combo_->currentIndex()].format;
 }
 
 std::filesystem::path ExportDialog::selectedPath() const {
-    return std::filesystem::path{destEdit_->text().toStdU16String()};
+    return std::filesystem::path{dest_edit_->text().toStdU16String()};
 }
 
 void ExportDialog::onBrowse() {
-    const auto& f = kFormats[formatCombo_->currentIndex()];
+    const auto& f = kFormats[format_combo_->currentIndex()];
     const QString chosen = QFileDialog::getSaveFileName(
         this, tr("Export Document"), QString{}, tr(f.filter));
     if (!chosen.isEmpty()) {
-        destEdit_->setText(chosen);
+        dest_edit_->setText(chosen);
     }
 }
 
 void ExportDialog::onFormatChanged(int) {
-    const auto& f = kFormats[formatCombo_->currentIndex()];
-    if (!destEdit_->text().isEmpty() &&
-        !destEdit_->text().endsWith(QString::fromUtf8(f.extension), Qt::CaseInsensitive)) {
-        destEdit_->clear();
+    const auto& f = kFormats[format_combo_->currentIndex()];
+    if (!dest_edit_->text().isEmpty() &&
+        !dest_edit_->text().endsWith(QString::fromUtf8(f.extension), Qt::CaseInsensitive)) {
+        dest_edit_->clear();
     }
     updateOkEnabled();
 }
 
 void ExportDialog::updateOkEnabled() {
     if (auto* okBtn = buttons_->button(QDialogButtonBox::Ok)) {
-        okBtn->setEnabled(!destEdit_->text().trimmed().isEmpty());
+        okBtn->setEnabled(!dest_edit_->text().trimmed().isEmpty());
     }
 }
 

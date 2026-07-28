@@ -42,9 +42,9 @@ FillSessionView::FillSessionView(mondoc::services::FillSessionService& service,
                                  QWidget* parent)
     : QWidget(parent),
       service_(service),
-      templateRepo_(templateRepo),
-      undoStack_(new QUndoStack(this)) {
-    undoStack_->setUndoLimit(100);
+      template_repo_(templateRepo),
+      undo_stack_(new QUndoStack(this)) {
+    undo_stack_->setUndoLimit(100);
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
@@ -59,12 +59,12 @@ FillSessionView::FillSessionView(mondoc::services::FillSessionService& service,
     buildSplitter(body);
     root->addWidget(body, 1);
 
-    auto* undoAct = undoStack_->createUndoAction(this, tr("Undo"));
+    auto* undoAct = undo_stack_->createUndoAction(this, tr("Undo"));
     undoAct->setShortcut(QKeySequence::Undo);
     undoAct->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     addAction(undoAct);
 
-    auto* redoAct = undoStack_->createRedoAction(this, tr("Redo"));
+    auto* redoAct = undo_stack_->createRedoAction(this, tr("Redo"));
     redoAct->setShortcut(QKeySequence::Redo);
     redoAct->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     addAction(redoAct);
@@ -75,56 +75,56 @@ void FillSessionView::buildToolbar(QWidget* host) {
     layout->setContentsMargins(8, 4, 8, 4);
     layout->setSpacing(8);
 
-    backBtn_ = new QPushButton(tr("Back to Library"), host);
-    backBtn_->setShortcut(QKeySequence(Qt::Key_Escape));
-    backBtn_->setAccessibleName(tr("Back to Library"));
+    back_btn_ = new QPushButton(tr("Back to Library"), host);
+    back_btn_->setShortcut(QKeySequence(Qt::Key_Escape));
+    back_btn_->setAccessibleName(tr("Back to Library"));
 
-    templateNameLabel_ = new QLabel(host);
-    QFont nf = templateNameLabel_->font();
+    template_name_label_ = new QLabel(host);
+    QFont nf = template_name_label_->font();
     nf.setBold(true);
-    templateNameLabel_->setFont(nf);
+    template_name_label_->setFont(nf);
 
-    aiStatusLabel_ = new QLabel(host);
-    aiStatusLabel_->setVisible(false);
-    aiStatusLabel_->setStyleSheet(QStringLiteral("color: gray; padding-right: 8px;"));
-    aiStatusLabel_->setAccessibleName(tr("AI pipeline status"));
+    ai_status_label_ = new QLabel(host);
+    ai_status_label_->setVisible(false);
+    ai_status_label_->setStyleSheet(QStringLiteral("color: gray; padding-right: 8px;"));
+    ai_status_label_->setAccessibleName(tr("AI pipeline status"));
 
-    aiToggle_ = new QCheckBox(tr("AI"), host);
-    aiToggle_->setChecked(true);
-    aiToggle_->setAccessibleName(tr("AI filling enabled"));
+    ai_toggle_ = new QCheckBox(tr("AI"), host);
+    ai_toggle_->setChecked(true);
+    ai_toggle_->setAccessibleName(tr("AI filling enabled"));
 
-    fillWithAiBtn_ = new QPushButton(tr("Fill with AI"), host);
-    fillWithAiBtn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+F")));
-    fillWithAiBtn_->setAccessibleName(tr("Fill with AI"));
-    fillWithAiBtn_->setStyleSheet(accentButtonStyle());
+    fill_with_ai_btn_ = new QPushButton(tr("Fill with AI"), host);
+    fill_with_ai_btn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+F")));
+    fill_with_ai_btn_->setAccessibleName(tr("Fill with AI"));
+    fill_with_ai_btn_->setStyleSheet(accentButtonStyle());
 
-    saveDraftBtn_ = new QPushButton(tr("Save Draft"), host);
-    saveDraftBtn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
-    saveDraftBtn_->setAccessibleName(tr("Save Draft"));
-    saveDraftBtn_->setToolTip(tr("Changes save automatically as you edit."));
-    saveDraftBtn_->setStyleSheet(accentButtonStyle());
+    save_draft_btn_ = new QPushButton(tr("Save Draft"), host);
+    save_draft_btn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
+    save_draft_btn_->setAccessibleName(tr("Save Draft"));
+    save_draft_btn_->setToolTip(tr("Changes save automatically as you edit."));
+    save_draft_btn_->setStyleSheet(accentButtonStyle());
 
-    exportBtn_ = new QPushButton(tr("Export\xe2\x80\xa6"), host);
-    exportBtn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
-    exportBtn_->setAccessibleName(tr("Export Document"));
-    exportBtn_->setStyleSheet(accentButtonStyle());
+    export_btn_ = new QPushButton(tr("Export\xe2\x80\xa6"), host);
+    export_btn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
+    export_btn_->setAccessibleName(tr("Export Document"));
+    export_btn_->setStyleSheet(accentButtonStyle());
 
-    layout->addWidget(backBtn_);
-    layout->addWidget(templateNameLabel_, 1);
-    layout->addWidget(aiStatusLabel_);
-    layout->addWidget(aiToggle_);
-    layout->addWidget(fillWithAiBtn_);
-    layout->addWidget(saveDraftBtn_);
-    layout->addWidget(exportBtn_);
+    layout->addWidget(back_btn_);
+    layout->addWidget(template_name_label_, 1);
+    layout->addWidget(ai_status_label_);
+    layout->addWidget(ai_toggle_);
+    layout->addWidget(fill_with_ai_btn_);
+    layout->addWidget(save_draft_btn_);
+    layout->addWidget(export_btn_);
 
-    connect(backBtn_, &QPushButton::clicked, this, &FillSessionView::onBackClicked);
-    connect(saveDraftBtn_, &QPushButton::clicked,
+    connect(back_btn_, &QPushButton::clicked, this, &FillSessionView::onBackClicked);
+    connect(save_draft_btn_, &QPushButton::clicked,
             this, &FillSessionView::onSaveDraftClicked);
-    connect(exportBtn_, &QPushButton::clicked,
+    connect(export_btn_, &QPushButton::clicked,
             this, &FillSessionView::onExportClicked);
-    connect(aiToggle_, &QCheckBox::stateChanged,
+    connect(ai_toggle_, &QCheckBox::stateChanged,
             this, &FillSessionView::onAiToggleChanged);
-    connect(fillWithAiBtn_, &QPushButton::clicked,
+    connect(fill_with_ai_btn_, &QPushButton::clicked,
             this, &FillSessionView::onFillWithAiClicked);
 
     updateAiControlsVisibility();
@@ -138,47 +138,47 @@ void FillSessionView::buildSplitter(QWidget* host) {
     splitter_->setHandleWidth(6);
     splitter_->setChildrenCollapsible(false);
 
-    sourcePane_ = new SourceDocPane(splitter_);
+    source_pane_ = new SourceDocPane(splitter_);
     buildRightPane(splitter_);
 
-    splitter_->addWidget(sourcePane_);
-    splitter_->addWidget(rightPane_);
+    splitter_->addWidget(source_pane_);
+    splitter_->addWidget(right_pane_);
     splitter_->setSizes({400, 600});
 
-    connect(fieldPane_, &FieldFormPane::sourceRefRequested,
-            sourcePane_, &SourceDocPane::highlightRef);
-    connect(chatPane_, &ChatPane::refinementRequested,
+    connect(field_pane_, &FieldFormPane::sourceRefRequested,
+            source_pane_, &SourceDocPane::highlightRef);
+    connect(chat_pane_, &ChatPane::refinementRequested,
             this, &FillSessionView::onChatRefinementRequested);
 
     layout->addWidget(splitter_);
 }
 
 void FillSessionView::buildRightPane(QWidget* host) {
-    rightPane_ = new QWidget(host);
-    auto* layout = new QVBoxLayout(rightPane_);
+    right_pane_ = new QWidget(host);
+    auto* layout = new QVBoxLayout(right_pane_);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
-    fieldPane_ = new FieldFormPane(rightPane_);
-    chatPane_  = new ChatPane(rightPane_);
+    field_pane_ = new FieldFormPane(right_pane_);
+    chat_pane_  = new ChatPane(right_pane_);
 
-    layout->addWidget(fieldPane_, 1);
-    layout->addWidget(chatPane_, 0);
+    layout->addWidget(field_pane_, 1);
+    layout->addWidget(chat_pane_, 0);
 
     updateAiControlsVisibility();
 }
 
 void FillSessionView::updateAiControlsVisibility() {
     const bool configured = service_.isAiConfigured();
-    aiToggle_->setVisible(configured);
+    ai_toggle_->setVisible(configured);
     if (!configured) {
-        fillWithAiBtn_->setVisible(false);
-        if (chatPane_) chatPane_->setVisible(false);
+        fill_with_ai_btn_->setVisible(false);
+        if (chat_pane_) chat_pane_->setVisible(false);
         return;
     }
-    const bool aiOn = aiToggle_->isChecked();
-    fillWithAiBtn_->setVisible(aiOn);
-    if (chatPane_) chatPane_->setVisible(aiOn);
+    const bool aiOn = ai_toggle_->isChecked();
+    fill_with_ai_btn_->setVisible(aiOn);
+    if (chat_pane_) chat_pane_->setVisible(aiOn);
 }
 
 bool FillSessionView::openSession(const mondoc::FillSessionId& id,
@@ -191,24 +191,24 @@ bool FillSessionView::openSession(const mondoc::FillSessionId& id,
     }
     auto& session = *sessionRes;
 
-    auto tplRes = templateRepo_.findById(session.template_id_);
+    auto tplRes = template_repo_.findById(session.template_id_);
     if (!tplRes) {
         if (errorOut) *errorOut = QString::fromStdString(tplRes.error().message());
         return false;
     }
     auto& tpl = *tplRes;
 
-    ++sessionGeneration_;
-    currentSessionId_ = id;
-    currentTemplateId_ = session.template_id_;
-    templateNameLabel_->setText(QString::fromStdString(tpl.name_));
+    ++session_generation_;
+    current_session_id_ = id;
+    current_template_id_ = session.template_id_;
+    template_name_label_->setText(QString::fromStdString(tpl.name_));
 
-    undoStack_->clear();
-    fieldPane_->populate(tpl, session, service_, undoStack_, currentSessionId_);
+    undo_stack_->clear();
+    field_pane_->populate(tpl, session, service_, undo_stack_, current_session_id_);
 
-    sourceDocIds_.clear();
-    sourceTexts_.clear();
-    sourceTitles_.clear();
+    source_doc_ids_.clear();
+    source_texts_.clear();
+    source_titles_.clear();
     std::vector<std::tuple<mondoc::SourceDocId, QString, QString>> tuples;
     tuples.reserve(sourcePaths.size());
     for (const auto& path : sourcePaths) {
@@ -219,12 +219,12 @@ bool FillSessionView::openSession(const mondoc::FillSessionId& id,
             : tr("Cannot read this source: %1")
                 .arg(QString::fromStdString(textRes.error().message()));
         auto docId = mondoc::SourceDocId(generateUuid());
-        sourceDocIds_.push_back(docId);
-        sourceTitles_.emplace_back(docId, title);
-        sourceTexts_.emplace_back(docId, body);
+        source_doc_ids_.push_back(docId);
+        source_titles_.emplace_back(docId, title);
+        source_texts_.emplace_back(docId, body);
         tuples.emplace_back(docId, title, body);
     }
-    sourcePane_->setSourceTexts(tuples);
+    source_pane_->setSourceTexts(tuples);
     return true;
 }
 
@@ -233,7 +233,7 @@ void FillSessionView::shutdownThread(QThread*& t, AiFillWorker*& worker, bool mu
     if (!thread) return;
 
     // Sever delivery to `this` before anything else, on every path: this kills
-    // the finished->lambda that nulls aiThread_/aiWorker_ (which could
+    // the finished->lambda that nulls ai_thread_/ai_worker_ (which could
     // otherwise fire late and stomp a subsequently-started thread's state)
     // and stops the worker's own result signals (finished/failed/cancelled ->
     // onAiFinished/onAiFailed/onAiCancelled) from reaching this view once
@@ -313,59 +313,59 @@ void FillSessionView::shutdownThread(QThread*& t, AiRefineWorker*& worker, bool 
 }
 
 FillSessionView::~FillSessionView() {
-    shutdownThread(aiThread_, aiWorker_, /*mustJoin=*/true);
-    shutdownThread(refineThread_, refineWorker_, /*mustJoin=*/true);
+    shutdownThread(ai_thread_, ai_worker_, /*mustJoin=*/true);
+    shutdownThread(refine_thread_, refine_worker_, /*mustJoin=*/true);
 }
 
 void FillSessionView::clearSession() {
-    ++sessionGeneration_;
-    shutdownThread(aiThread_, aiWorker_, /*mustJoin=*/false);
-    shutdownThread(refineThread_, refineWorker_, /*mustJoin=*/false);
+    ++session_generation_;
+    shutdownThread(ai_thread_, ai_worker_, /*mustJoin=*/false);
+    shutdownThread(refine_thread_, refine_worker_, /*mustJoin=*/false);
 
-    preFillSnapshot_.clear();
-    sourceDocIds_.clear();
-    sourceTexts_.clear();
-    sourceTitles_.clear();
+    pre_fill_snapshot_.clear();
+    source_doc_ids_.clear();
+    source_texts_.clear();
+    source_titles_.clear();
 
-    undoStack_->clear();
-    fieldPane_->clear();
-    sourcePane_->setSourceTexts(std::vector<std::pair<QString, QString>>{});
-    templateNameLabel_->clear();
-    if (chatPane_) chatPane_->clearHistory();
-    currentSessionId_ = mondoc::FillSessionId{};
-    currentTemplateId_ = mondoc::TemplateId{};
+    undo_stack_->clear();
+    field_pane_->clear();
+    source_pane_->setSourceTexts(std::vector<std::pair<QString, QString>>{});
+    template_name_label_->clear();
+    if (chat_pane_) chat_pane_->clearHistory();
+    current_session_id_ = mondoc::FillSessionId{};
+    current_template_id_ = mondoc::TemplateId{};
 }
 
 void FillSessionView::capturePreFillSnapshot() {
-    preFillSnapshot_.clear();
-    auto resumed = service_.resumeSession(currentSessionId_);
+    pre_fill_snapshot_.clear();
+    auto resumed = service_.resumeSession(current_session_id_);
     if (!resumed) return;
     for (const auto& fill : resumed->fills_) {
-        preFillSnapshot_.insert(
+        pre_fill_snapshot_.insert(
             QString::fromStdString(fill.field_id_.value()),
             QString::fromStdString(fill.current_value_));
     }
 }
 
 void FillSessionView::restorePreFillSnapshot() {
-    undoStack_->clear();
-    auto resumed = service_.resumeSession(currentSessionId_);
+    undo_stack_->clear();
+    auto resumed = service_.resumeSession(current_session_id_);
     if (!resumed) return;
-    auto tpl = templateRepo_.findById(currentTemplateId_);
+    auto tpl = template_repo_.findById(current_template_id_);
     if (!tpl) return;
-    fieldPane_->populate(*tpl, *resumed, service_, undoStack_, currentSessionId_);
-    preFillSnapshot_.clear();
+    field_pane_->populate(*tpl, *resumed, service_, undo_stack_, current_session_id_);
+    pre_fill_snapshot_.clear();
 }
 
 std::vector<mondoc::domain::AiSourceDoc>
 FillSessionView::currentSources() const {
     std::vector<mondoc::domain::AiSourceDoc> out;
-    out.reserve(sourceTexts_.size());
-    for (std::size_t i = 0; i < sourceTexts_.size(); ++i) {
+    out.reserve(source_texts_.size());
+    for (std::size_t i = 0; i < source_texts_.size(); ++i) {
         mondoc::domain::AiSourceDoc in;
-        in.id_    = sourceTexts_[i].first;
-        in.title_ = sourceTitles_[i].second.toStdString();
-        in.text_  = sourceTexts_[i].second.toStdString();
+        in.id_    = source_texts_[i].first;
+        in.title_ = source_titles_[i].second.toStdString();
+        in.text_  = source_texts_[i].second.toStdString();
         out.push_back(std::move(in));
     }
     return out;
@@ -398,52 +398,52 @@ void FillSessionView::onAiToggleChanged(int /*state*/) {
 }
 
 void FillSessionView::onFillWithAiClicked() {
-    if (aiThread_ != nullptr) {
-        if (aiWorker_) aiWorker_->requestCancel();
+    if (ai_thread_ != nullptr) {
+        if (ai_worker_) ai_worker_->requestCancel();
         return;
     }
     if (!service_.isAiConfigured()) return;
 
     capturePreFillSnapshot();
 
-    const QString freeFormQ = chatPane_ ? chatPane_->currentInputText() : QString();
+    const QString freeFormQ = chat_pane_ ? chat_pane_->currentInputText() : QString();
     const std::string freeForm = freeFormQ.toStdString();
-    if (!freeFormQ.trimmed().isEmpty() && chatPane_) {
-        chatPane_->appendSystemMessage(
+    if (!freeFormQ.trimmed().isEmpty() && chat_pane_) {
+        chat_pane_->appendSystemMessage(
             tr("Fill with AI ran with chat input as additional context."));
-        chatPane_->clearInput();
+        chat_pane_->clearInput();
     }
 
-    aiFillGeneration_ = sessionGeneration_;
-    aiThread_ = new QThread(this);
-    aiWorker_ = new AiFillWorker(service_, currentSessionId_, currentSources(), freeForm);
-    aiWorker_->moveToThread(aiThread_);
+    ai_fill_generation_ = session_generation_;
+    ai_thread_ = new QThread(this);
+    ai_worker_ = new AiFillWorker(service_, current_session_id_, currentSources(), freeForm);
+    ai_worker_->moveToThread(ai_thread_);
 
-    connect(aiThread_, &QThread::started, aiWorker_, &AiFillWorker::run);
-    connect(aiWorker_, &AiFillWorker::finished,
+    connect(ai_thread_, &QThread::started, ai_worker_, &AiFillWorker::run);
+    connect(ai_worker_, &AiFillWorker::finished,
             this, &FillSessionView::onAiFinished, Qt::QueuedConnection);
-    connect(aiWorker_, &AiFillWorker::failed,
+    connect(ai_worker_, &AiFillWorker::failed,
             this, &FillSessionView::onAiFailed, Qt::QueuedConnection);
-    connect(aiWorker_, &AiFillWorker::cancelled,
+    connect(ai_worker_, &AiFillWorker::cancelled,
             this, &FillSessionView::onAiCancelled, Qt::QueuedConnection);
-    connect(aiWorker_, &AiFillWorker::finished,  aiThread_, &QThread::quit);
-    connect(aiWorker_, &AiFillWorker::failed,    aiThread_, &QThread::quit);
-    connect(aiWorker_, &AiFillWorker::cancelled, aiThread_, &QThread::quit);
-    connect(aiThread_, &QThread::finished, aiWorker_, &QObject::deleteLater);
-    connect(aiThread_, &QThread::finished, aiThread_, &QObject::deleteLater);
-    connect(aiThread_, &QThread::finished, this, [this]() {
-        aiThread_ = nullptr;
-        aiWorker_ = nullptr;
+    connect(ai_worker_, &AiFillWorker::finished,  ai_thread_, &QThread::quit);
+    connect(ai_worker_, &AiFillWorker::failed,    ai_thread_, &QThread::quit);
+    connect(ai_worker_, &AiFillWorker::cancelled, ai_thread_, &QThread::quit);
+    connect(ai_thread_, &QThread::finished, ai_worker_, &QObject::deleteLater);
+    connect(ai_thread_, &QThread::finished, ai_thread_, &QObject::deleteLater);
+    connect(ai_thread_, &QThread::finished, this, [this]() {
+        ai_thread_ = nullptr;
+        ai_worker_ = nullptr;
     });
 
-    fillWithAiBtn_->setText(tr("Cancel AI fill"));
-    aiStatusLabel_->setText(tr("Filling with AI\xe2\x80\xa6"));
-    aiStatusLabel_->setVisible(true);
+    fill_with_ai_btn_->setText(tr("Cancel AI fill"));
+    ai_status_label_->setText(tr("Filling with AI\xe2\x80\xa6"));
+    ai_status_label_->setVisible(true);
     emit statusMessageRequested(tr("Filling with AI\xe2\x80\xa6"), 0);
 
-    if (chatPane_) chatPane_->setBusy(true);
+    if (chat_pane_) chat_pane_->setBusy(true);
 
-    aiThread_->start();
+    ai_thread_->start();
 }
 
 void FillSessionView::onAiFinished(std::vector<mondoc::domain::Fill> fills) {
@@ -453,16 +453,16 @@ void FillSessionView::onAiFinished(std::vector<mondoc::domain::Fill> fills) {
     // joined) and its result lands here after openSession() has already
     // pointed this view at a different session. Drop it if the generation
     // that started it no longer matches.
-    if (aiFillGeneration_ != sessionGeneration_) return;
+    if (ai_fill_generation_ != session_generation_) return;
 
-    fieldPane_->populateAi(fills);
+    field_pane_->populateAi(fills);
 
     std::vector<mondoc::domain::AiExtractedFact> facts;
     for (const auto& f : fills) {
         for (const auto& ref : f.source_refs_) {
             int sourceIndex = 0;
-            for (std::size_t i = 0; i < sourceDocIds_.size(); ++i) {
-                if (sourceDocIds_[i] == ref.source_id_) {
+            for (std::size_t i = 0; i < source_doc_ids_.size(); ++i) {
+                if (source_doc_ids_[i] == ref.source_id_) {
                     sourceIndex = static_cast<int>(i);
                     break;
                 }
@@ -477,24 +477,24 @@ void FillSessionView::onAiFinished(std::vector<mondoc::domain::Fill> fills) {
         }
     }
 
-    if (chatPane_) {
-        chatPane_->setLastPass1Facts(std::move(facts));
-        chatPane_->appendSystemMessage(tr("Fill with AI ran."));
-        chatPane_->setBusy(false);
+    if (chat_pane_) {
+        chat_pane_->setLastPass1Facts(std::move(facts));
+        chat_pane_->appendSystemMessage(tr("Fill with AI ran."));
+        chat_pane_->setBusy(false);
     }
 
-    fillWithAiBtn_->setText(tr("Fill with AI"));
-    aiStatusLabel_->setVisible(false);
-    preFillSnapshot_.clear();
+    fill_with_ai_btn_->setText(tr("Fill with AI"));
+    ai_status_label_->setVisible(false);
+    pre_fill_snapshot_.clear();
     emit statusMessageRequested(QString(), 0);
 }
 
 void FillSessionView::onAiFailed(QString message, int errorKind) {
-    if (aiFillGeneration_ != sessionGeneration_) return;
+    if (ai_fill_generation_ != session_generation_) return;
     restorePreFillSnapshot();
-    fillWithAiBtn_->setText(tr("Fill with AI"));
-    aiStatusLabel_->setVisible(false);
-    if (chatPane_) chatPane_->setBusy(false);
+    fill_with_ai_btn_->setText(tr("Fill with AI"));
+    ai_status_label_->setVisible(false);
+    if (chat_pane_) chat_pane_->setBusy(false);
     emit statusMessageRequested(tr("AI fill failed."), 4000);
 
     showAiErrorDialog(
@@ -502,51 +502,51 @@ void FillSessionView::onAiFailed(QString message, int errorKind) {
 }
 
 void FillSessionView::onAiCancelled() {
-    if (aiFillGeneration_ != sessionGeneration_) return;
+    if (ai_fill_generation_ != session_generation_) return;
     restorePreFillSnapshot();
-    fillWithAiBtn_->setText(tr("Fill with AI"));
-    aiStatusLabel_->setVisible(false);
-    if (chatPane_) chatPane_->setBusy(false);
+    fill_with_ai_btn_->setText(tr("Fill with AI"));
+    ai_status_label_->setVisible(false);
+    if (chat_pane_) chat_pane_->setBusy(false);
     emit statusMessageRequested(tr("AI fill cancelled."), 4000);
 }
 
 void FillSessionView::onChatRefinementRequested(
         QString prompt, std::vector<mondoc::domain::AiExtractedFact> lastFacts) {
     if (!service_.isAiConfigured()) {
-        if (chatPane_) {
-            chatPane_->appendSystemMessage(tr("AI not configured."));
-            chatPane_->setBusy(false);
+        if (chat_pane_) {
+            chat_pane_->appendSystemMessage(tr("AI not configured."));
+            chat_pane_->setBusy(false);
         }
         return;
     }
-    if (refineThread_ != nullptr) {
-        if (chatPane_) chatPane_->setBusy(false);
+    if (refine_thread_ != nullptr) {
+        if (chat_pane_) chat_pane_->setBusy(false);
         return;
     }
 
-    refineGeneration_ = sessionGeneration_;
-    refineThread_ = new QThread(this);
-    refineWorker_ = new AiRefineWorker(service_, currentSessionId_,
+    refine_generation_ = session_generation_;
+    refine_thread_ = new QThread(this);
+    refine_worker_ = new AiRefineWorker(service_, current_session_id_,
                                        prompt.toStdString(), currentSources(),
                                        std::move(lastFacts));
-    refineWorker_->moveToThread(refineThread_);
+    refine_worker_->moveToThread(refine_thread_);
 
-    connect(refineThread_, &QThread::started, refineWorker_, &AiRefineWorker::run);
-    connect(refineWorker_, &AiRefineWorker::finished,
+    connect(refine_thread_, &QThread::started, refine_worker_, &AiRefineWorker::run);
+    connect(refine_worker_, &AiRefineWorker::finished,
             this, &FillSessionView::onChatRefineFinished, Qt::QueuedConnection);
-    connect(refineWorker_, &AiRefineWorker::failed,
+    connect(refine_worker_, &AiRefineWorker::failed,
             this, &FillSessionView::onChatRefineFailed, Qt::QueuedConnection);
-    connect(refineWorker_, &AiRefineWorker::finished, refineThread_, &QThread::quit);
-    connect(refineWorker_, &AiRefineWorker::failed,   refineThread_, &QThread::quit);
-    connect(refineWorker_, &AiRefineWorker::cancelled, refineThread_, &QThread::quit);
-    connect(refineThread_, &QThread::finished, refineWorker_, &QObject::deleteLater);
-    connect(refineThread_, &QThread::finished, refineThread_, &QObject::deleteLater);
-    connect(refineThread_, &QThread::finished, this, [this]() {
-        refineThread_ = nullptr;
-        refineWorker_ = nullptr;
+    connect(refine_worker_, &AiRefineWorker::finished, refine_thread_, &QThread::quit);
+    connect(refine_worker_, &AiRefineWorker::failed,   refine_thread_, &QThread::quit);
+    connect(refine_worker_, &AiRefineWorker::cancelled, refine_thread_, &QThread::quit);
+    connect(refine_thread_, &QThread::finished, refine_worker_, &QObject::deleteLater);
+    connect(refine_thread_, &QThread::finished, refine_thread_, &QObject::deleteLater);
+    connect(refine_thread_, &QThread::finished, this, [this]() {
+        refine_thread_ = nullptr;
+        refine_worker_ = nullptr;
     });
 
-    refineThread_->start();
+    refine_thread_->start();
 }
 
 void FillSessionView::onChatRefineFinished(std::vector<mondoc::domain::Fill> fills) {
@@ -556,42 +556,42 @@ void FillSessionView::onChatRefineFinished(std::vector<mondoc::domain::Fill> fil
     // joined) and its result lands here after openSession() has already
     // pointed this view at a different session. Drop it if the generation
     // that started it no longer matches.
-    if (refineGeneration_ != sessionGeneration_) return;
+    if (refine_generation_ != session_generation_) return;
     if (!fills.empty()) {
-        fieldPane_->populateAi(fills);
-        if (chatPane_)
-            chatPane_->appendAiMessage(tr("Updated %1 field(s).").arg(fills.size()));
-    } else if (chatPane_) {
-        chatPane_->appendAiMessage(tr("No changes applied."));
+        field_pane_->populateAi(fills);
+        if (chat_pane_)
+            chat_pane_->appendAiMessage(tr("Updated %1 field(s).").arg(fills.size()));
+    } else if (chat_pane_) {
+        chat_pane_->appendAiMessage(tr("No changes applied."));
     }
-    if (chatPane_) chatPane_->setBusy(false);
+    if (chat_pane_) chat_pane_->setBusy(false);
 }
 
 void FillSessionView::onChatRefineFailed(QString message) {
-    if (refineGeneration_ != sessionGeneration_) return;
-    if (chatPane_) {
-        chatPane_->appendSystemMessage(tr("Refinement failed: %1").arg(message));
-        chatPane_->setBusy(false);
+    if (refine_generation_ != session_generation_) return;
+    if (chat_pane_) {
+        chat_pane_->appendSystemMessage(tr("Refinement failed: %1").arg(message));
+        chat_pane_->setBusy(false);
     }
     emit statusMessageRequested(tr("AI fill failed."), 4000);
 }
 
 void FillSessionView::onBackClicked() {
-    if (!currentSessionId_.value().empty()) {
+    if (!current_session_id_.value().empty()) {
         QMessageBox box(this);
         box.setIcon(QMessageBox::Warning);
         box.setWindowTitle(tr("Discard Session"));
         box.setText(
             tr("Discard the fill session for \xe2\x80\x9c%1\xe2\x80\x9d? "
                "Unsaved changes will be lost.")
-                .arg(templateNameLabel_->text()));
+                .arg(template_name_label_->text()));
         auto* discardBtn = box.addButton(tr("Discard Session"),
                                          QMessageBox::DestructiveRole);
         auto* keepBtn = box.addButton(tr("Keep Editing"), QMessageBox::RejectRole);
         box.setDefaultButton(keepBtn);
         box.exec();
         if (box.clickedButton() != discardBtn) return;
-        if (auto discardResult = service_.discardSession(currentSessionId_); !discardResult) {
+        if (auto discardResult = service_.discardSession(current_session_id_); !discardResult) {
             qWarning("FillSessionView::onBackClicked: failed to discard session: %s",
                      discardResult.error().message().c_str());
         }
@@ -608,7 +608,7 @@ void FillSessionView::onExportClicked() {
     if (dlg.exec() != QDialog::Accepted) return;
 
     const auto path = dlg.selectedPath();
-    auto res = service_.exportSession(currentSessionId_, dlg.selectedFormat(), path);
+    auto res = service_.exportSession(current_session_id_, dlg.selectedFormat(), path);
     if (res) {
         emit sessionExported(QFileInfo(pathToQString(path)).fileName());
     } else {

@@ -16,8 +16,8 @@ namespace mondoc::ui {
 
 AboutDialog::AboutDialog(QWidget* parent)
     : QDialog(parent),
-      libraryList_(new QListWidget(this)),
-      licenseView_(new QTextBrowser(this))
+      library_list_(new QListWidget(this)),
+      license_view_(new QTextBrowser(this))
 {
     setWindowTitle(tr("About MonDoc"));
     setModal(true);
@@ -36,12 +36,12 @@ AboutDialog::AboutDialog(QWidget* parent)
     };
 
     for (const auto& lib : libraries_)
-        libraryList_->addItem(lib.displayName);
-    libraryList_->setAccessibleName(tr("Third-party libraries"));
+        library_list_->addItem(lib.displayName);
+    library_list_->setAccessibleName(tr("Third-party libraries"));
 
-    licenseView_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    licenseView_->setReadOnly(true);
-    licenseView_->setPlaceholderText(tr("Select a library to view its license."));
+    license_view_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    license_view_->setReadOnly(true);
+    license_view_->setPlaceholderText(tr("Select a library to view its license."));
 
     auto* productLabel = new QLabel(
         QStringLiteral("MonDoc \xe2\x80\x94 Accurate, human-reviewed document filling."), this);
@@ -78,11 +78,11 @@ AboutDialog::AboutDialog(QWidget* parent)
 
     auto* leftPane = new QVBoxLayout;
     leftPane->addWidget(libsHeading);
-    leftPane->addWidget(libraryList_);
+    leftPane->addWidget(library_list_);
 
     auto* rightPane = new QVBoxLayout;
     rightPane->addWidget(licenseHeading);
-    rightPane->addWidget(licenseView_);
+    rightPane->addWidget(license_view_);
 
     auto* paneRow = new QHBoxLayout;
     paneRow->addLayout(leftPane, 1);
@@ -97,7 +97,7 @@ AboutDialog::AboutDialog(QWidget* parent)
     root->addLayout(paneRow, 1);
     root->addWidget(closeBox);
 
-    connect(libraryList_, &QListWidget::currentRowChanged,
+    connect(library_list_, &QListWidget::currentRowChanged,
             this, &AboutDialog::onLibrarySelected);
 }
 
@@ -107,11 +107,11 @@ void AboutDialog::onLibrarySelected(int row) {
         QCoreApplication::applicationDirPath() + QStringLiteral("/LICENSES/");
     QFile f(licenseDir + libraries_.at(row).licenseFile);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        licenseView_->setPlainText(
+        license_view_->setPlainText(
             tr("License file not found: %1").arg(libraries_.at(row).licenseFile));
         return;
     }
-    licenseView_->setPlainText(QString::fromUtf8(f.readAll()));
+    license_view_->setPlainText(QString::fromUtf8(f.readAll()));
 }
 
 }  // namespace mondoc::ui

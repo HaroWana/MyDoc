@@ -86,32 +86,32 @@ private:
     std::optional<mondoc::TemplateId> selectedTemplateId() const;
 
     mondoc::services::TemplateService& service_;
-    mondoc::services::FillSessionService& fillService_;
-    mondoc::domain::ITemplateRepository& templateRepo_;
-    mondoc::adapters::ai::LlmConfig currentConfig_;
-    std::function<void(mondoc::adapters::ai::LlmConfig)> reconfigureLlmCallback_;
-    QAction* exportAction_ = nullptr;
+    mondoc::services::FillSessionService& fill_service_;
+    mondoc::domain::ITemplateRepository& template_repo_;
+    mondoc::adapters::ai::LlmConfig current_config_;
+    std::function<void(mondoc::adapters::ai::LlmConfig)> reconfigure_llm_callback_;
+    QAction* export_action_ = nullptr;
 
-    QListWidget* templateList_;
-    QStackedWidget* centralStack_;
-    QLineEdit* searchBox_;
-    SchemaDockWidget* schemaWidget_;
-    FillSessionView* fillSessionView_;
-    ResumeBanner* resumeBanner_;
+    QListWidget* template_list_;
+    QStackedWidget* central_stack_;
+    QLineEdit* search_box_;
+    SchemaDockWidget* schema_widget_;
+    FillSessionView* fill_session_view_;
+    ResumeBanner* resume_banner_;
 
-    QLabel* detailNameLabel_;
-    QLabel* detailFormatLabel_;
-    QLabel* detailFieldCountLabel_;
-    QLabel* detailCreatedLabel_;
-    QPushButton* detailFillBtn_;
-    QPushButton* detailRenameBtn_;
-    QPushButton* detailDuplicateBtn_;
-    QPushButton* detailDeleteBtn_;
+    QLabel* detail_name_label_;
+    QLabel* detail_format_label_;
+    QLabel* detail_field_count_label_;
+    QLabel* detail_created_label_;
+    QPushButton* detail_fill_btn_;
+    QPushButton* detail_rename_btn_;
+    QPushButton* detail_duplicate_btn_;
+    QPushButton* detail_delete_btn_;
 
-    mondoc::domain::Template pendingTemplate_;
-    std::string pendingDocumentText_;
-    std::optional<mondoc::domain::Template> selectedTemplate_;
-    std::vector<mondoc::domain::Template> cachedTemplates_;
+    mondoc::domain::Template pending_template_;
+    std::string pending_document_text_;
+    std::optional<mondoc::domain::Template> selected_template_;
+    std::vector<mondoc::domain::Template> cached_templates_;
 };
 
 }  // namespace mondoc::ui

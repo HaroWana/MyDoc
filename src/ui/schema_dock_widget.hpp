@@ -55,19 +55,19 @@ private:
     void shutdownThread(QThread*& t, AiFieldDetectWorker*& worker);
 
     QTableWidget* table_;
-    QPushButton* addFieldBtn_;
-    QPushButton* removeFieldBtn_;
-    QPushButton* discardBtn_;
-    QPushButton* saveBtn_;
-    QPushButton* detectWithAiBtn_;
-    QPushButton* acceptProposalBtn_;
-    QPushButton* discardProposalBtn_;
-    QLabel* aiStatusLabel_;
-    QLabel* aiErrorLabel_;
+    QPushButton* add_field_btn_;
+    QPushButton* remove_field_btn_;
+    QPushButton* discard_btn_;
+    QPushButton* save_btn_;
+    QPushButton* detect_with_ai_btn_;
+    QPushButton* accept_proposal_btn_;
+    QPushButton* discard_proposal_btn_;
+    QLabel* ai_status_label_;
+    QLabel* ai_error_label_;
 
-    std::string documentText_;
-    QThread* aiThread_ = nullptr;
-    AiFieldDetectWorker* aiWorker_ = nullptr;
+    std::string document_text_;
+    QThread* ai_thread_ = nullptr;
+    AiFieldDetectWorker* ai_worker_ = nullptr;
     mondoc::adapters::ai::AiFieldDetector* detector_ = nullptr;
 };
 

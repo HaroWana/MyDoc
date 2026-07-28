@@ -32,7 +32,7 @@ class PdfPageWidget : public QWidget {
     Q_OBJECT
 public:
     explicit PdfPageWidget(QWidget* parent = nullptr)
-        : QWidget(parent), dragging_(false), regionLocked_(false), pageIndex_(0)
+        : QWidget(parent), dragging_(false), region_locked_(false), page_index_(0)
     {
         setCursor(Qt::CrossCursor);
         setMouseTracking(false);
@@ -40,18 +40,18 @@ public:
 
     void setImage(const QImage& img, int pageIndex) {
         image_     = img;
-        pageIndex_ = pageIndex;
-        dragRect_  = QRect{};
+        page_index_ = pageIndex;
+        drag_rect_  = QRect{};
         dragging_  = false;
-        regionLocked_ = false;
+        region_locked_ = false;
         setFixedSize(image_.size());
         update();
     }
 
-    QRect dragRect() const { return dragRect_; }
+    QRect dragRect() const { return drag_rect_; }
     QSize imageSize() const { return image_.size(); }
-    int pageIndex() const { return pageIndex_; }
-    bool hasRegion() const { return regionLocked_; }
+    int pageIndex() const { return page_index_; }
+    bool hasRegion() const { return region_locked_; }
 
 signals:
     void regionDrawn(const QRect& rect);
@@ -61,47 +61,47 @@ protected:
         QPainter p(this);
         if (!image_.isNull())
             p.drawImage(0, 0, image_);
-        if (dragging_ || regionLocked_) {
+        if (dragging_ || region_locked_) {
             QColor fillColor(0x25, 0x63, 0xEB, 64);
-            p.fillRect(dragRect_.normalized(), fillColor);
+            p.fillRect(drag_rect_.normalized(), fillColor);
             p.setPen(QPen(QColor(0x25, 0x63, 0xEB), 2));
-            p.drawRect(dragRect_.normalized());
+            p.drawRect(drag_rect_.normalized());
         }
     }
 
     void mousePressEvent(QMouseEvent* e) override {
         if (e->button() != Qt::LeftButton) return;
-        dragStart_ = e->pos();
-        dragRect_  = QRect{dragStart_, dragStart_};
+        drag_start_ = e->pos();
+        drag_rect_  = QRect{drag_start_, drag_start_};
         dragging_  = true;
-        regionLocked_ = false;
+        region_locked_ = false;
         update();
     }
 
     void mouseMoveEvent(QMouseEvent* e) override {
         if (!dragging_) return;
-        dragRect_ = QRect{dragStart_, e->pos()}.normalized();
+        drag_rect_ = QRect{drag_start_, e->pos()}.normalized();
         update();
     }
 
     void mouseReleaseEvent(QMouseEvent* e) override {
         if (!dragging_ || e->button() != Qt::LeftButton) return;
-        dragRect_  = QRect{dragStart_, e->pos()}.normalized();
+        drag_rect_  = QRect{drag_start_, e->pos()}.normalized();
         dragging_  = false;
-        if (dragRect_.width() > 4 && dragRect_.height() > 4) {
-            regionLocked_ = true;
-            emit regionDrawn(dragRect_);
+        if (drag_rect_.width() > 4 && drag_rect_.height() > 4) {
+            region_locked_ = true;
+            emit regionDrawn(drag_rect_);
         }
         update();
     }
 
 private:
     QImage image_;
-    QPoint dragStart_;
-    QRect dragRect_;
+    QPoint drag_start_;
+    QRect drag_rect_;
     bool dragging_;
-    bool regionLocked_;
-    int pageIndex_;
+    bool region_locked_;
+    int page_index_;
 };
 
 static mondoc::domain::FieldLocation regionToLocation(
@@ -120,155 +120,155 @@ RegionMarkViewer::RegionMarkViewer(const std::filesystem::path& sourcePath,
                                    const QString& templateName,
                                    QWidget* parent)
     : QDialog(parent),
-      sourcePath_(sourcePath),
-      textBrowser_(new QTextBrowser(this)),
-      pdfWidget_(nullptr),
-      instructionLabel_(new QLabel(
+      source_path_(sourcePath),
+      text_browser_(new QTextBrowser(this)),
+      pdf_widget_(nullptr),
+      instruction_label_(new QLabel(
           tr("Click and drag in the document to mark where this field appears."), this)),
-      namePromptLabel_(new QLabel(tr("Name this field:"), this)),
-      nameEdit_(new QLineEdit(this)),
-      typePromptLabel_(new QLabel(tr("Field type:"), this)),
-      typeCombo_(new QComboBox(this)),
-      confirmRegionBtn_(new QPushButton(tr("Confirm Region"), this)),
-      saveFieldBtn_(new QPushButton(tr("Save Field"), this)),
-      closeBtn_(new QPushButton(tr("Close without Saving"), this))
+      name_prompt_label_(new QLabel(tr("Name this field:"), this)),
+      name_edit_(new QLineEdit(this)),
+      type_prompt_label_(new QLabel(tr("Field type:"), this)),
+      type_combo_(new QComboBox(this)),
+      confirm_region_btn_(new QPushButton(tr("Confirm Region"), this)),
+      save_field_btn_(new QPushButton(tr("Save Field"), this)),
+      close_btn_(new QPushButton(tr("Close without Saving"), this))
 {
     setWindowTitle(tr("Mark Field Region — %1").arg(templateName));
     setModal(true);
     setMinimumSize(700, 500);
 
-    typeCombo_->addItem(tr("Text"),      static_cast<int>(mondoc::domain::FieldType::Text));
-    typeCombo_->addItem(tr("Paragraph"), static_cast<int>(mondoc::domain::FieldType::Paragraph));
-    typeCombo_->addItem(tr("Number"),    static_cast<int>(mondoc::domain::FieldType::Number));
-    typeCombo_->addItem(tr("Date"),      static_cast<int>(mondoc::domain::FieldType::Date));
-    typeCombo_->addItem(tr("Checkbox"),  static_cast<int>(mondoc::domain::FieldType::Checkbox));
-    typeCombo_->addItem(tr("Dropdown"),  static_cast<int>(mondoc::domain::FieldType::Dropdown));
+    type_combo_->addItem(tr("Text"),      static_cast<int>(mondoc::domain::FieldType::Text));
+    type_combo_->addItem(tr("Paragraph"), static_cast<int>(mondoc::domain::FieldType::Paragraph));
+    type_combo_->addItem(tr("Number"),    static_cast<int>(mondoc::domain::FieldType::Number));
+    type_combo_->addItem(tr("Date"),      static_cast<int>(mondoc::domain::FieldType::Date));
+    type_combo_->addItem(tr("Checkbox"),  static_cast<int>(mondoc::domain::FieldType::Checkbox));
+    type_combo_->addItem(tr("Dropdown"),  static_cast<int>(mondoc::domain::FieldType::Dropdown));
 
-    nameEdit_->setAccessibleName(tr("Field name"));
-    typeCombo_->setAccessibleName(tr("Field type"));
-    confirmRegionBtn_->setAccessibleName(tr("Confirm region"));
-    saveFieldBtn_->setAccessibleName(tr("Save field"));
-    closeBtn_->setAccessibleName(tr("Close without saving"));
+    name_edit_->setAccessibleName(tr("Field name"));
+    type_combo_->setAccessibleName(tr("Field type"));
+    confirm_region_btn_->setAccessibleName(tr("Confirm region"));
+    save_field_btn_->setAccessibleName(tr("Save field"));
+    close_btn_->setAccessibleName(tr("Close without saving"));
 
-    confirmRegionBtn_->setStyleSheet(accentButtonStyle());
-    saveFieldBtn_->setStyleSheet(accentButtonStyle());
+    confirm_region_btn_->setStyleSheet(accentButtonStyle());
+    save_field_btn_->setStyleSheet(accentButtonStyle());
 
-    confirmRegionBtn_->setEnabled(false);
-    saveFieldBtn_->setEnabled(false);
+    confirm_region_btn_->setEnabled(false);
+    save_field_btn_->setEnabled(false);
 
-    namePromptLabel_->setVisible(false);
-    nameEdit_->setVisible(false);
-    typePromptLabel_->setVisible(false);
-    typeCombo_->setVisible(false);
-    saveFieldBtn_->setVisible(false);
+    name_prompt_label_->setVisible(false);
+    name_edit_->setVisible(false);
+    type_prompt_label_->setVisible(false);
+    type_combo_->setVisible(false);
+    save_field_btn_->setVisible(false);
 
-    scrollArea_ = new QScrollArea(this);
-    scrollArea_->setWidgetResizable(false);
-    scrollArea_->setContentsMargins(0, 0, 0, 0);
+    scroll_area_ = new QScrollArea(this);
+    scroll_area_->setWidgetResizable(false);
+    scroll_area_->setContentsMargins(0, 0, 0, 0);
 
-    prevPageBtn_   = new QPushButton(tr("Previous Page"), this);
-    nextPageBtn_   = new QPushButton(tr("Next Page"), this);
-    pageIndicator_ = new QLabel(this);
-    prevPageBtn_->setAccessibleName(tr("Previous page"));
-    nextPageBtn_->setAccessibleName(tr("Next page"));
-    connect(prevPageBtn_, &QPushButton::clicked, this, [this]() {
-        if (pdfPageIndex_ > 0) renderPdfPage(pdfPageIndex_ - 1);
+    prev_page_btn_   = new QPushButton(tr("Previous Page"), this);
+    next_page_btn_   = new QPushButton(tr("Next Page"), this);
+    page_indicator_ = new QLabel(this);
+    prev_page_btn_->setAccessibleName(tr("Previous page"));
+    next_page_btn_->setAccessibleName(tr("Next page"));
+    connect(prev_page_btn_, &QPushButton::clicked, this, [this]() {
+        if (pdf_page_index_ > 0) renderPdfPage(pdf_page_index_ - 1);
     });
-    connect(nextPageBtn_, &QPushButton::clicked, this, [this]() {
-        if (pdfDoc_ && pdfPageIndex_ + 1 < pdfDoc_->pageCount())
-            renderPdfPage(pdfPageIndex_ + 1);
+    connect(next_page_btn_, &QPushButton::clicked, this, [this]() {
+        if (pdf_doc_ && pdf_page_index_ + 1 < pdf_doc_->pageCount())
+            renderPdfPage(pdf_page_index_ + 1);
     });
 
-    const bool isPdf = mondoc::hasExtension(sourcePath_, ".pdf");
+    const bool isPdf = mondoc::hasExtension(source_path_, ".pdf");
 
     if (isPdf) {
-        pdfWidget_ = new PdfPageWidget(this);
-        scrollArea_->setWidget(pdfWidget_);
-        if (!loadPdf(sourcePath_)) {
-            instructionLabel_->setText(
+        pdf_widget_ = new PdfPageWidget(this);
+        scroll_area_->setWidget(pdf_widget_);
+        if (!loadPdf(source_path_)) {
+            instruction_label_->setText(
                 tr("MonDoc cannot display this document. "
                    "You can still mark a region by entering coordinates manually."));
         }
-        connect(pdfWidget_, &PdfPageWidget::regionDrawn,
+        connect(pdf_widget_, &PdfPageWidget::regionDrawn,
                 this, &RegionMarkViewer::onRegionDrawn);
     } else {
-        textBrowser_->setReadOnly(true);
-        scrollArea_->setWidget(textBrowser_);
-        const bool loaded = loadTextDocument(sourcePath_);
-        confirmRegionBtn_->setText(tr("Mark Location"));
-        confirmRegionBtn_->setEnabled(loaded);
+        text_browser_->setReadOnly(true);
+        scroll_area_->setWidget(text_browser_);
+        const bool loaded = loadTextDocument(source_path_);
+        confirm_region_btn_->setText(tr("Mark Location"));
+        confirm_region_btn_->setEnabled(loaded);
         if (!loaded) {
-            confirmRegionBtn_->setToolTip(
+            confirm_region_btn_->setToolTip(
                 tr("The document could not be read, so a location cannot be marked."));
         }
     }
 
-    const bool multiPage = isPdf && pdfDoc_ && pdfDoc_->pageCount() > 1;
-    prevPageBtn_->setVisible(multiPage);
-    nextPageBtn_->setVisible(multiPage);
-    pageIndicator_->setVisible(multiPage);
+    const bool multiPage = isPdf && pdf_doc_ && pdf_doc_->pageCount() > 1;
+    prev_page_btn_->setVisible(multiPage);
+    next_page_btn_->setVisible(multiPage);
+    page_indicator_->setVisible(multiPage);
 
     auto* pageRow = new QHBoxLayout;
-    pageRow->addWidget(prevPageBtn_);
-    pageRow->addWidget(pageIndicator_);
-    pageRow->addWidget(nextPageBtn_);
+    pageRow->addWidget(prev_page_btn_);
+    pageRow->addWidget(page_indicator_);
+    pageRow->addWidget(next_page_btn_);
     pageRow->addStretch(1);
 
     auto* btnRow = new QHBoxLayout;
     btnRow->addStretch(1);
-    btnRow->addWidget(closeBtn_);
-    btnRow->addWidget(confirmRegionBtn_);
-    btnRow->addWidget(saveFieldBtn_);
+    btnRow->addWidget(close_btn_);
+    btnRow->addWidget(confirm_region_btn_);
+    btnRow->addWidget(save_field_btn_);
 
     auto* subStepRow = new QHBoxLayout;
-    subStepRow->addWidget(namePromptLabel_);
-    subStepRow->addWidget(nameEdit_);
+    subStepRow->addWidget(name_prompt_label_);
+    subStepRow->addWidget(name_edit_);
     subStepRow->addSpacing(16);
-    subStepRow->addWidget(typePromptLabel_);
-    subStepRow->addWidget(typeCombo_);
+    subStepRow->addWidget(type_prompt_label_);
+    subStepRow->addWidget(type_combo_);
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(0, 8, 0, 8);
     root->setSpacing(8);
-    root->addWidget(instructionLabel_);
+    root->addWidget(instruction_label_);
     root->addLayout(pageRow);
-    root->addWidget(scrollArea_, 1);
+    root->addWidget(scroll_area_, 1);
     root->addLayout(subStepRow);
     root->addLayout(btnRow);
 
-    connect(confirmRegionBtn_, &QPushButton::clicked, this, &RegionMarkViewer::onConfirmRegion);
-    connect(saveFieldBtn_,     &QPushButton::clicked, this, &RegionMarkViewer::onSaveField);
-    connect(closeBtn_,         &QPushButton::clicked, this, &RegionMarkViewer::onCloseWithoutSaving);
-    connect(nameEdit_, &QLineEdit::textChanged, this, [this](const QString& text) {
-        saveFieldBtn_->setEnabled(!text.trimmed().isEmpty());
+    connect(confirm_region_btn_, &QPushButton::clicked, this, &RegionMarkViewer::onConfirmRegion);
+    connect(save_field_btn_,     &QPushButton::clicked, this, &RegionMarkViewer::onSaveField);
+    connect(close_btn_,         &QPushButton::clicked, this, &RegionMarkViewer::onCloseWithoutSaving);
+    connect(name_edit_, &QLineEdit::textChanged, this, [this](const QString& text) {
+        save_field_btn_->setEnabled(!text.trimmed().isEmpty());
     });
 }
 
 bool RegionMarkViewer::loadPdf(const std::filesystem::path& path) {
-    pdfDoc_ = new QPdfDocument(this);
+    pdf_doc_ = new QPdfDocument(this);
     const QString qpath = QString::fromStdU16String(path.u16string());
-    if (pdfDoc_->load(qpath) != QPdfDocument::Error::None) return false;
-    if (pdfDoc_->pageCount() == 0) return false;
+    if (pdf_doc_->load(qpath) != QPdfDocument::Error::None) return false;
+    if (pdf_doc_->pageCount() == 0) return false;
     return renderPdfPage(0);
 }
 
 bool RegionMarkViewer::renderPdfPage(int pageIndex) {
-    const QSizeF pagePts = pdfDoc_->pagePointSize(pageIndex);
+    const QSizeF pagePts = pdf_doc_->pagePointSize(pageIndex);
     if (pagePts.width() <= 0.0 || pagePts.height() <= 0.0) return false;
     const int w = 800;
     const int h = static_cast<int>(800.0 * pagePts.height() / pagePts.width());
-    const QImage img = pdfDoc_->render(pageIndex, QSize(w, h));
+    const QImage img = pdf_doc_->render(pageIndex, QSize(w, h));
     if (img.isNull()) return false;
-    pdfPageIndex_ = pageIndex;
-    pdfWidget_->setImage(img, pageIndex);
+    pdf_page_index_ = pageIndex;
+    pdf_widget_->setImage(img, pageIndex);
     // A drawn region belongs to the page it was drawn on.
-    regionDrawn_ = false;
-    pendingLocation_ = std::nullopt;
-    confirmRegionBtn_->setEnabled(false);
-    pageIndicator_->setText(tr("Page %1 of %2")
-        .arg(pageIndex + 1).arg(pdfDoc_->pageCount()));
-    prevPageBtn_->setEnabled(pageIndex > 0);
-    nextPageBtn_->setEnabled(pageIndex + 1 < pdfDoc_->pageCount());
+    region_drawn_ = false;
+    pending_location_ = std::nullopt;
+    confirm_region_btn_->setEnabled(false);
+    page_indicator_->setText(tr("Page %1 of %2")
+        .arg(pageIndex + 1).arg(pdf_doc_->pageCount()));
+    prev_page_btn_->setEnabled(pageIndex > 0);
+    next_page_btn_->setEnabled(pageIndex + 1 < pdf_doc_->pageCount());
     return true;
 }
 
@@ -284,7 +284,7 @@ bool RegionMarkViewer::loadTextDocument(const std::filesystem::path& path) {
         if (!extracted) {
             const QString errMsg = tr("Could not read document: %1")
                 .arg(QString::fromStdString(extracted.error().message()));
-            textBrowser_->setHtml(
+            text_browser_->setHtml(
                 QStringLiteral("<html><body><p style=\"color:#B91C1C;font-weight:600;\">%1</p></body></html>")
                     .arg(errMsg.toHtmlEscaped()));
             return false;
@@ -302,24 +302,24 @@ bool RegionMarkViewer::loadTextDocument(const std::filesystem::path& path) {
     // so onConfirmRegion's offset math stays aligned with extractPlainText()'s
     // output. HTML rendering (previously used) collapses whitespace runs and
     // loses inter-paragraph spacing as a visual affordance in exchange.
-    textBrowser_->setPlainText(QString::fromStdString(content));
+    text_browser_->setPlainText(QString::fromStdString(content));
     return true;
 }
 
 void RegionMarkViewer::onRegionDrawn(const QRect& rect) {
-    regionDrawn_ = true;
-    if (pdfWidget_) {
-        pendingLocation_ = regionToLocation(rect, pdfWidget_->imageSize(),
-                                            pdfWidget_->pageIndex());
+    region_drawn_ = true;
+    if (pdf_widget_) {
+        pending_location_ = regionToLocation(rect, pdf_widget_->imageSize(),
+                                            pdf_widget_->pageIndex());
     }
-    confirmRegionBtn_->setEnabled(true);
+    confirm_region_btn_->setEnabled(true);
 }
 
 void RegionMarkViewer::onConfirmRegion() {
-    if (!pdfWidget_) {
-        const QTextCursor cur = textBrowser_->textCursor();
+    if (!pdf_widget_) {
+        const QTextCursor cur = text_browser_->textCursor();
         if (cur.hasSelection()) {
-            const QString full = textBrowser_->toPlainText();
+            const QString full = text_browser_->toPlainText();
             const QString beforeStart = full.left(cur.selectionStart());
             const QString beforeEnd   = full.left(cur.selectionEnd());
             mondoc::domain::TextLocation tl;
@@ -330,33 +330,33 @@ void RegionMarkViewer::onConfirmRegion() {
                                    cur.selectionEnd() - cur.selectionStart());
             if (sel.size() > 120) sel = sel.left(120);
             tl.excerpt = sel.toStdString();
-            pendingLocation_ = mondoc::domain::FieldLocation{std::nullopt, tl};
+            pending_location_ = mondoc::domain::FieldLocation{std::nullopt, tl};
         } else {
-            pendingLocation_ = std::nullopt;
+            pending_location_ = std::nullopt;
         }
     }
-    instructionLabel_->setVisible(false);
-    namePromptLabel_->setVisible(true);
-    nameEdit_->setVisible(true);
-    typePromptLabel_->setVisible(true);
-    typeCombo_->setVisible(true);
-    saveFieldBtn_->setVisible(true);
-    confirmRegionBtn_->setVisible(false);
-    nameEdit_->setFocus();
+    instruction_label_->setVisible(false);
+    name_prompt_label_->setVisible(true);
+    name_edit_->setVisible(true);
+    type_prompt_label_->setVisible(true);
+    type_combo_->setVisible(true);
+    save_field_btn_->setVisible(true);
+    confirm_region_btn_->setVisible(false);
+    name_edit_->setFocus();
 }
 
 void RegionMarkViewer::onSaveField() {
     mondoc::domain::Field f;
-    f.name_     = nameEdit_->text().trimmed().toStdString();
-    f.type_     = static_cast<mondoc::domain::FieldType>(typeCombo_->currentData().toInt());
+    f.name_     = name_edit_->text().trimmed().toStdString();
+    f.type_     = static_cast<mondoc::domain::FieldType>(type_combo_->currentData().toInt());
     f.origin_   = mondoc::domain::FieldOrigin::Unknown;
-    f.location_ = pendingLocation_;
+    f.location_ = pending_location_;
     field_ = f;
     accept();
 }
 
 void RegionMarkViewer::onCloseWithoutSaving() {
-    if (regionDrawn_) {
+    if (region_drawn_) {
         QMessageBox box(this);
         box.setIcon(QMessageBox::Question);
         box.setWindowTitle(tr("Discard Region?"));

@@ -25,8 +25,8 @@ constexpr int kTabsIndex   = 2;
 SourceDocPane::SourceDocPane(QWidget* parent)
     : QWidget(parent),
       stack_(new QStackedWidget(this)),
-      emptyLabel_(nullptr),
-      singleView_(new QPlainTextEdit(this)),
+      empty_label_(nullptr),
+      single_view_(new QPlainTextEdit(this)),
       tabs_(new QTabWidget(this)) {
     auto* emptyContainer = new QWidget(this);
     auto* emptyLayout = new QVBoxLayout(emptyContainer);
@@ -37,7 +37,7 @@ SourceDocPane::SourceDocPane(QWidget* parent)
     hfont.setPointSize(hfont.pointSize() + 2);
     heading->setFont(hfont);
     heading->setAlignment(Qt::AlignCenter);
-    emptyLabel_ = heading;
+    empty_label_ = heading;
     auto* body = new QLabel(
         tr("Fill in the fields on the right. You can add source documents when "
            "starting a new session."),
@@ -48,9 +48,9 @@ SourceDocPane::SourceDocPane(QWidget* parent)
     emptyLayout->addWidget(body);
     emptyLayout->addStretch(2);
 
-    singleView_->setReadOnly(true);
-    singleView_->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    singleView_->setAccessibleName(tr("Source document"));
+    single_view_->setReadOnly(true);
+    single_view_->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    single_view_->setAccessibleName(tr("Source document"));
 
     tabs_->setTabBarAutoHide(true);
     tabs_->setMovable(false);
@@ -58,7 +58,7 @@ SourceDocPane::SourceDocPane(QWidget* parent)
     tabs_->setAccessibleName(tr("Source documents"));
 
     stack_->addWidget(emptyContainer);
-    stack_->addWidget(singleView_);
+    stack_->addWidget(single_view_);
     stack_->addWidget(tabs_);
     stack_->setCurrentIndex(kEmptyIndex);
 
@@ -71,8 +71,8 @@ SourceDocPane::SourceDocPane(QWidget* parent)
 
 void SourceDocPane::setSourceTexts(
     const std::vector<std::pair<QString, QString>>& titledBodies) {
-    viewByDocId_.clear();
-    singleView_->clear();
+    view_by_doc_id_.clear();
+    single_view_->clear();
     while (tabs_->count() > 0) {
         QWidget* w = tabs_->widget(0);
         tabs_->removeTab(0);
@@ -84,7 +84,7 @@ void SourceDocPane::setSourceTexts(
         return;
     }
     if (titledBodies.size() == 1) {
-        singleView_->setPlainText(titledBodies[0].second);
+        single_view_->setPlainText(titledBodies[0].second);
         stack_->setCurrentIndex(kSingleIndex);
         return;
     }
@@ -108,23 +108,23 @@ void SourceDocPane::setSourceTexts(
     setSourceTexts(legacy);
 
     if (sources.size() == 1) {
-        viewByDocId_[std::get<0>(sources[0]).value()] = singleView_;
+        view_by_doc_id_[std::get<0>(sources[0]).value()] = single_view_;
     } else {
         for (int i = 0; i < tabs_->count() && i < static_cast<int>(sources.size()); ++i) {
             auto* view = qobject_cast<QPlainTextEdit*>(tabs_->widget(i));
             if (view) {
-                viewByDocId_[std::get<0>(sources[i]).value()] = view;
+                view_by_doc_id_[std::get<0>(sources[i]).value()] = view;
             }
         }
     }
 }
 
 void SourceDocPane::highlightRef(const mondoc::domain::SourceRef& ref) {
-    auto it = viewByDocId_.find(ref.source_id_.value());
-    if (it == viewByDocId_.end() || !it->second) {
+    auto it = view_by_doc_id_.find(ref.source_id_.value());
+    if (it == view_by_doc_id_.end() || !it->second) {
         qWarning("SourceDocPane::highlightRef: unknown source id %s",
                  ref.source_id_.value().c_str());
-        if (singleView_) singleView_->setExtraSelections({});
+        if (single_view_) single_view_->setExtraSelections({});
         return;
     }
     QPlainTextEdit* view = it->second;

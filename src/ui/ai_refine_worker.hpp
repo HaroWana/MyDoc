@@ -35,10 +35,10 @@ signals:
 
 private:
     mondoc::services::FillSessionService& service_;
-    mondoc::FillSessionId sessionId_;
-    std::string userMessage_;
+    mondoc::FillSessionId session_id_;
+    std::string user_message_;
     std::vector<mondoc::domain::AiSourceDoc> sources_;
-    std::vector<mondoc::domain::AiExtractedFact> lastPass1Facts_;
+    std::vector<mondoc::domain::AiExtractedFact> last_pass1_facts_;
     std::atomic<bool> cancelled_{false};
 };
 

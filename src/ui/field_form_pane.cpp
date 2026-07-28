@@ -37,7 +37,7 @@ FieldFormPane::FieldFormPane(QWidget* parent)
     : QWidget(parent),
       scroll_(new QScrollArea(this)),
       form_(nullptr),
-      formLayout_(nullptr) {
+      form_layout_(nullptr) {
     scroll_->setWidgetResizable(true);
     scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -54,19 +54,19 @@ FieldFormPane::FieldFormPane(QWidget* parent)
 
 void FieldFormPane::rebuildFormHost() {
     form_ = new QWidget(scroll_);
-    formLayout_ = new QVBoxLayout(form_);
-    formLayout_->setContentsMargins(8, 8, 8, 8);
-    formLayout_->setSpacing(8);
-    formLayout_->addStretch(1);
+    form_layout_ = new QVBoxLayout(form_);
+    form_layout_->setContentsMargins(8, 8, 8, 8);
+    form_layout_->setSpacing(8);
+    form_layout_->addStretch(1);
     scroll_->setWidget(form_);
 }
 
 void FieldFormPane::clear() {
-    lastCommitted_.clear();
-    textEditTimers_.clear();
-    sourceRefsByField_.clear();
-    inputToFieldId_.clear();
-    inputByField_.clear();
+    last_committed_.clear();
+    text_edit_timers_.clear();
+    source_refs_by_field_.clear();
+    input_to_field_id_.clear();
+    input_by_field_.clear();
     rebuildFormHost();
 }
 
@@ -77,13 +77,13 @@ void FieldFormPane::populate(const mondoc::domain::Template& tpl,
                              mondoc::FillSessionId sessionId) {
     clear();
     service_ = &service;
-    undoStack_ = undoStack;
-    sessionId_ = std::move(sessionId);
+    undo_stack_ = undoStack;
+    session_id_ = std::move(sessionId);
 
     if (tpl.fields_.empty()) {
         auto* emptyLabel = new QLabel(tr("This template has no fields."), form_);
         emptyLabel->setAlignment(Qt::AlignCenter);
-        formLayout_->insertWidget(0, emptyLabel);
+        form_layout_->insertWidget(0, emptyLabel);
         return;
     }
 
@@ -94,12 +94,12 @@ void FieldFormPane::populate(const mondoc::domain::Template& tpl,
             if (fill.field_id_ == field.id_) {
                 initial = QString::fromStdString(fill.current_value_);
                 initialConfidence = fill.confidence_;
-                sourceRefsByField_[field.id_.value()] = fill.source_refs_;
+                source_refs_by_field_[field.id_.value()] = fill.source_refs_;
                 break;
             }
         }
         buildRow(field, initial, initialConfidence);
-        lastCommitted_[field.id_.value()] = initial;
+        last_committed_[field.id_.value()] = initial;
     }
 }
 
@@ -171,14 +171,14 @@ void FieldFormPane::buildRow(const mondoc::domain::Field& field,
 
     input->setAccessibleName(displayName);
     input->installEventFilter(this);
-    inputToFieldId_[input] = field.id_;
-    inputByField_[field.id_.value()] = input;
+    input_to_field_id_[input] = field.id_;
+    input_by_field_[field.id_.value()] = input;
 
     if (auto* te = qobject_cast<QTextEdit*>(input)) {
         // QTextEdit delivers mouse events to its viewport, not the widget
         // itself, so the click-to-highlight-source handler needs both mapped.
         te->viewport()->installEventFilter(this);
-        inputToFieldId_[te->viewport()] = field.id_;
+        input_to_field_id_[te->viewport()] = field.id_;
     }
 
     if (field.type_ != FieldType::Checkbox) {
@@ -204,7 +204,7 @@ void FieldFormPane::buildRow(const mondoc::domain::Field& field,
     } else if (auto* te = qobject_cast<QTextEdit*>(input)) {
         auto* timer = new QTimer(te);
         timer->setSingleShot(true);
-        textEditTimers_[fieldId.value()] = timer;
+        text_edit_timers_[fieldId.value()] = timer;
         connect(te, &QTextEdit::textChanged, this,
                 [timer]() { timer->start(kTextDebounceMs); });
         connect(timer, &QTimer::timeout, this,
@@ -232,17 +232,17 @@ void FieldFormPane::buildRow(const mondoc::domain::Field& field,
                 });
     }
 
-    formLayout_->insertWidget(formLayout_->count() - 1, rowContainer);
+    form_layout_->insertWidget(form_layout_->count() - 1, rowContainer);
 }
 
 void FieldFormPane::commit(const mondoc::FieldId& fieldId,
                            QWidget* input,
                            const QString& displayName,
                            const QString& newValue) {
-    if (!service_ || !undoStack_) return;
+    if (!service_ || !undo_stack_) return;
     const auto key = fieldId.value();
-    auto it = lastCommitted_.find(key);
-    const QString oldValue = (it == lastCommitted_.end()) ? QString{} : it->second;
+    auto it = last_committed_.find(key);
+    const QString oldValue = (it == last_committed_.end()) ? QString{} : it->second;
     if (oldValue == newValue) return;
 
     auto* cmd = new EditFieldCommand(fieldId,
@@ -250,12 +250,12 @@ void FieldFormPane::commit(const mondoc::FieldId& fieldId,
                                      newValue.toStdString(),
                                      input,
                                      *service_,
-                                     sessionId_,
+                                     session_id_,
                                      displayName);
-    undoStack_->push(cmd);
-    lastCommitted_[key] = newValue;
+    undo_stack_->push(cmd);
+    last_committed_[key] = newValue;
     markFilled(input, mondoc::domain::Confidence::Manual);
-    sourceRefsByField_[key].clear();
+    source_refs_by_field_[key].clear();
 }
 
 void FieldFormPane::markFilled(QWidget* input, mondoc::domain::Confidence c) {
@@ -277,8 +277,8 @@ void FieldFormPane::populateAi(const std::vector<mondoc::domain::Fill>& fills) {
     using mondoc::domain::Confidence;
     for (const auto& f : fills) {
         if (f.confidence_ == Confidence::Manual) continue;
-        auto it = inputByField_.find(f.field_id_.value());
-        if (it == inputByField_.end()) continue;
+        auto it = input_by_field_.find(f.field_id_.value());
+        if (it == input_by_field_.end()) continue;
         QWidget* input = it->second;
         const QString value = QString::fromStdString(f.current_value_);
 
@@ -300,8 +300,8 @@ void FieldFormPane::populateAi(const std::vector<mondoc::domain::Fill>& fills) {
         }
 
         markFilled(input, f.confidence_);
-        sourceRefsByField_[f.field_id_.value()] = f.source_refs_;
-        lastCommitted_[f.field_id_.value()] = value;
+        source_refs_by_field_[f.field_id_.value()] = f.source_refs_;
+        last_committed_[f.field_id_.value()] = value;
     }
 }
 
@@ -309,10 +309,10 @@ bool FieldFormPane::eventFilter(QObject* obj, QEvent* ev) {
     if (ev->type() == QEvent::MouseButtonRelease) {
         auto* me = static_cast<QMouseEvent*>(ev);
         if (me->button() == Qt::LeftButton) {
-            auto it = inputToFieldId_.find(obj);
-            if (it != inputToFieldId_.end()) {
-                auto refs = sourceRefsByField_.find(it->second.value());
-                if (refs != sourceRefsByField_.end() && !refs->second.empty()) {
+            auto it = input_to_field_id_.find(obj);
+            if (it != input_to_field_id_.end()) {
+                auto refs = source_refs_by_field_.find(it->second.value());
+                if (refs != source_refs_by_field_.end() && !refs->second.empty()) {
                     emit sourceRefRequested(refs->second.front());
                 }
             }

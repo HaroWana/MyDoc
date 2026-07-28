@@ -31,10 +31,10 @@ public slots:
 
 private:
     QStackedWidget* stack_;
-    QLabel* emptyLabel_;
-    QPlainTextEdit* singleView_;
+    QLabel* empty_label_;
+    QPlainTextEdit* single_view_;
     QTabWidget* tabs_;
-    std::unordered_map<std::string, QPlainTextEdit*> viewByDocId_;
+    std::unordered_map<std::string, QPlainTextEdit*> view_by_doc_id_;
 };
 
 }  // namespace mondoc::ui

@@ -28,17 +28,17 @@ public:
     int id() const override { return 1; }
     bool mergeWith(const QUndoCommand* other) override;
 
-    const mondoc::FieldId& fieldId() const noexcept { return fieldId_; }
+    const mondoc::FieldId& fieldId() const noexcept { return field_id_; }
 
 private:
     void applyValue(const std::string& value);
 
-    mondoc::FieldId fieldId_;
-    std::string oldValue_;
-    std::string newValue_;
-    QWidget* inputWidget_;
+    mondoc::FieldId field_id_;
+    std::string old_value_;
+    std::string new_value_;
+    QWidget* input_widget_;
     mondoc::services::FillSessionService& service_;
-    mondoc::FillSessionId sessionId_;
+    mondoc::FillSessionId session_id_;
 };
 
 }  // namespace mondoc::ui

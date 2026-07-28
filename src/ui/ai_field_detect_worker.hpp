@@ -33,8 +33,8 @@ signals:
 
 private:
     mondoc::adapters::ai::AiFieldDetector& detector_;
-    std::string documentText_;
-    std::vector<mondoc::domain::Field> existingFields_;
+    std::string document_text_;
+    std::vector<mondoc::domain::Field> existing_fields_;
     std::atomic<bool> cancelled_{false};
 };
 

@@ -26,9 +26,9 @@ private slots:
     void updateOkEnabled();
 
 private:
-    QComboBox* formatCombo_;
-    QLineEdit* destEdit_;
-    QPushButton* browseBtn_;
+    QComboBox* format_combo_;
+    QLineEdit* dest_edit_;
+    QPushButton* browse_btn_;
     QDialogButtonBox* buttons_;
 };
 

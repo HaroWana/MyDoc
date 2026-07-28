@@ -77,29 +77,29 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
                        QWidget* parent)
     : QMainWindow(parent),
       service_(templateService),
-      fillService_(fillService),
-      templateRepo_(templateRepo),
-      currentConfig_(currentConfig),
-      reconfigureLlmCallback_(std::move(reconfigureLlmCallback)),
-      templateList_(new QListWidget(this)),
-      centralStack_(new QStackedWidget(this)),
-      searchBox_(new QLineEdit(this)),
-      schemaWidget_(new SchemaDockWidget(this)),
-      fillSessionView_(nullptr),
-      resumeBanner_(nullptr),
-      detailNameLabel_(nullptr),
-      detailFormatLabel_(nullptr),
-      detailFieldCountLabel_(nullptr),
-      detailCreatedLabel_(nullptr),
-      detailFillBtn_(nullptr),
-      detailRenameBtn_(nullptr),
-      detailDuplicateBtn_(nullptr),
-      detailDeleteBtn_(nullptr) {
+      fill_service_(fillService),
+      template_repo_(templateRepo),
+      current_config_(currentConfig),
+      reconfigure_llm_callback_(std::move(reconfigureLlmCallback)),
+      template_list_(new QListWidget(this)),
+      central_stack_(new QStackedWidget(this)),
+      search_box_(new QLineEdit(this)),
+      schema_widget_(new SchemaDockWidget(this)),
+      fill_session_view_(nullptr),
+      resume_banner_(nullptr),
+      detail_name_label_(nullptr),
+      detail_format_label_(nullptr),
+      detail_field_count_label_(nullptr),
+      detail_created_label_(nullptr),
+      detail_fill_btn_(nullptr),
+      detail_rename_btn_(nullptr),
+      detail_duplicate_btn_(nullptr),
+      detail_delete_btn_(nullptr) {
     setWindowTitle(tr("MonDoc"));
     setAcceptDrops(true);
 
-    fillSessionView_ = new FillSessionView(fillService_, templateRepo_, this);
-    resumeBanner_ = new ResumeBanner(this);
+    fill_session_view_ = new FillSessionView(fill_service_, template_repo_, this);
+    resume_banner_ = new ResumeBanner(this);
 
     auto* sidebar = new QWidget(this);
     sidebar->setMinimumWidth(180);
@@ -109,28 +109,28 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
     buildEmptyState(emptyPage);
     auto* detailPage = new QWidget(this);
     buildDetailPage(detailPage);
-    centralStack_->addWidget(emptyPage);
-    centralStack_->addWidget(detailPage);
-    centralStack_->addWidget(fillSessionView_);
-    centralStack_->setCurrentIndex(0);
+    central_stack_->addWidget(emptyPage);
+    central_stack_->addWidget(detailPage);
+    central_stack_->addWidget(fill_session_view_);
+    central_stack_->setCurrentIndex(0);
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
     splitter->addWidget(sidebar);
-    splitter->addWidget(centralStack_);
+    splitter->addWidget(central_stack_);
     splitter->setChildrenCollapsible(false);
     splitter->setSizes({240, 800});
     setCentralWidget(splitter);
 
-    schemaWidget_->setWindowTitle(tr("Schema"));
-    addDockWidget(Qt::RightDockWidgetArea, schemaWidget_);
-    schemaWidget_->hide();
+    schema_widget_->setWindowTitle(tr("Schema"));
+    addDockWidget(Qt::RightDockWidgetArea, schema_widget_);
+    schema_widget_->hide();
 
     statusBar();
 
     // Menu bar
     auto* fileMenu = menuBar()->addMenu(tr("&File"));
-    exportAction_ = fileMenu->addAction(tr("Export Template\xe2\x80\xa6"), this, &MainWindow::onExportTemplate);
-    exportAction_->setEnabled(false);
+    export_action_ = fileMenu->addAction(tr("Export Template\xe2\x80\xa6"), this, &MainWindow::onExportTemplate);
+    export_action_->setEnabled(false);
     fileMenu->addAction(tr("Import Template\xe2\x80\xa6"), this, &MainWindow::onImportTemplate);
 
     auto* editMenu = menuBar()->addMenu(tr("&Edit"));
@@ -150,35 +150,35 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
     tb->addWidget(regBtn);
 
     connect(regBtn, &QPushButton::clicked, this, &MainWindow::onRegisterClicked);
-    connect(searchBox_, &QLineEdit::textChanged, this, &MainWindow::onSearchChanged);
-    connect(templateList_, &QListWidget::currentRowChanged,
+    connect(search_box_, &QLineEdit::textChanged, this, &MainWindow::onSearchChanged);
+    connect(template_list_, &QListWidget::currentRowChanged,
             this, &MainWindow::onTemplateSelected);
-    connect(schemaWidget_, &SchemaDockWidget::schemaSaved,
+    connect(schema_widget_, &SchemaDockWidget::schemaSaved,
             this, &MainWindow::onSchemaSaved);
-    connect(schemaWidget_, &SchemaDockWidget::schemaDiscarded,
+    connect(schema_widget_, &SchemaDockWidget::schemaDiscarded,
             this, &MainWindow::onSchemaDiscarded);
 
-    templateList_->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(templateList_, &QListWidget::customContextMenuRequested,
+    template_list_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(template_list_, &QListWidget::customContextMenuRequested,
             this, &MainWindow::showListContextMenu);
 
-    auto* deleteAction = new QAction(tr("Delete Template"), templateList_);
+    auto* deleteAction = new QAction(tr("Delete Template"), template_list_);
     deleteAction->setShortcut(QKeySequence::Delete);
     deleteAction->setShortcutContext(Qt::WidgetShortcut);
     connect(deleteAction, &QAction::triggered, this, &MainWindow::onDeleteTemplate);
-    templateList_->addAction(deleteAction);
+    template_list_->addAction(deleteAction);
 
-    connect(fillSessionView_, &FillSessionView::backRequested,
+    connect(fill_session_view_, &FillSessionView::backRequested,
             this, &MainWindow::onSessionBackRequested);
-    connect(fillSessionView_, &FillSessionView::sessionExported,
+    connect(fill_session_view_, &FillSessionView::sessionExported,
             this, &MainWindow::onSessionExported);
-    connect(fillSessionView_, &FillSessionView::exportFailed,
+    connect(fill_session_view_, &FillSessionView::exportFailed,
             this, &MainWindow::onSessionExportFailed);
-    connect(fillSessionView_, &FillSessionView::statusMessageRequested,
+    connect(fill_session_view_, &FillSessionView::statusMessageRequested,
             statusBar(), &QStatusBar::showMessage);
-    connect(resumeBanner_, &ResumeBanner::resumeRequested,
+    connect(resume_banner_, &ResumeBanner::resumeRequested,
             this, &MainWindow::onResumeRequested);
-    connect(resumeBanner_, &ResumeBanner::discardRequested,
+    connect(resume_banner_, &ResumeBanner::discardRequested,
             this, &MainWindow::onDiscardRequested);
 
     refreshTemplateList();
@@ -190,14 +190,14 @@ void MainWindow::buildSidebar(QWidget* sidebar) {
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(8);
 
-    searchBox_->setPlaceholderText(tr("Search templates..."));
-    searchBox_->setAccessibleName(tr("Search templates"));
-    layout->addWidget(searchBox_);
-    layout->addWidget(resumeBanner_);
+    search_box_->setPlaceholderText(tr("Search templates..."));
+    search_box_->setAccessibleName(tr("Search templates"));
+    layout->addWidget(search_box_);
+    layout->addWidget(resume_banner_);
 
-    templateList_->setSelectionMode(QAbstractItemView::SingleSelection);
-    templateList_->setAccessibleName(tr("Template list"));
-    layout->addWidget(templateList_, 1);
+    template_list_->setSelectionMode(QAbstractItemView::SingleSelection);
+    template_list_->setAccessibleName(tr("Template list"));
+    layout->addWidget(template_list_, 1);
 }
 
 void MainWindow::buildEmptyState(QWidget* page) {
@@ -227,22 +227,22 @@ void MainWindow::buildDetailPage(QWidget* page) {
     layout->setContentsMargins(24, 24, 24, 24);
     layout->setSpacing(12);
 
-    detailNameLabel_ = new QLabel(page);
-    QFont nameFont = detailNameLabel_->font();
+    detail_name_label_ = new QLabel(page);
+    QFont nameFont = detail_name_label_->font();
     nameFont.setBold(true);
     nameFont.setPointSize(nameFont.pointSize() + 2);
-    detailNameLabel_->setFont(nameFont);
-    layout->addWidget(detailNameLabel_);
+    detail_name_label_->setFont(nameFont);
+    layout->addWidget(detail_name_label_);
 
     auto* metaRow = new QHBoxLayout();
-    detailFormatLabel_ = new QLabel(page);
-    detailFieldCountLabel_ = new QLabel(page);
-    detailCreatedLabel_ = new QLabel(page);
-    metaRow->addWidget(detailFormatLabel_);
+    detail_format_label_ = new QLabel(page);
+    detail_field_count_label_ = new QLabel(page);
+    detail_created_label_ = new QLabel(page);
+    metaRow->addWidget(detail_format_label_);
     metaRow->addSpacing(16);
-    metaRow->addWidget(detailFieldCountLabel_);
+    metaRow->addWidget(detail_field_count_label_);
     metaRow->addSpacing(16);
-    metaRow->addWidget(detailCreatedLabel_);
+    metaRow->addWidget(detail_created_label_);
     metaRow->addStretch(1);
     layout->addLayout(metaRow);
 
@@ -252,40 +252,40 @@ void MainWindow::buildDetailPage(QWidget* page) {
     layout->addWidget(sep);
 
     auto* primaryRow = new QHBoxLayout();
-    detailFillBtn_ = new QPushButton(tr("Fill Session\xe2\x80\xa6"), page);
-    detailFillBtn_->setStyleSheet(accentButtonStyle());
-    detailFillBtn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+F")));
-    detailFillBtn_->setAccessibleName(tr("Fill Session"));
-    detailFillBtn_->setToolTip(tr("Fill Session"));
-    primaryRow->addWidget(detailFillBtn_);
+    detail_fill_btn_ = new QPushButton(tr("Fill Session\xe2\x80\xa6"), page);
+    detail_fill_btn_->setStyleSheet(accentButtonStyle());
+    detail_fill_btn_->setShortcut(QKeySequence(QStringLiteral("Ctrl+F")));
+    detail_fill_btn_->setAccessibleName(tr("Fill Session"));
+    detail_fill_btn_->setToolTip(tr("Fill Session"));
+    primaryRow->addWidget(detail_fill_btn_);
     primaryRow->addStretch(1);
     layout->addLayout(primaryRow);
 
-    connect(detailFillBtn_, &QPushButton::clicked,
+    connect(detail_fill_btn_, &QPushButton::clicked,
             this, &MainWindow::onFillSessionClicked);
 
     auto* actionRow = new QHBoxLayout();
-    detailRenameBtn_ = new QPushButton(tr("Rename Template"), page);
-    detailDuplicateBtn_ = new QPushButton(tr("Duplicate Template"), page);
-    detailDeleteBtn_ = new QPushButton(tr("Delete Template"), page);
-    detailDeleteBtn_->setStyleSheet(QStringLiteral("color: #DC2626;"));
+    detail_rename_btn_ = new QPushButton(tr("Rename Template"), page);
+    detail_duplicate_btn_ = new QPushButton(tr("Duplicate Template"), page);
+    detail_delete_btn_ = new QPushButton(tr("Delete Template"), page);
+    detail_delete_btn_->setStyleSheet(QStringLiteral("color: #DC2626;"));
     auto* markRegionBtn = new QPushButton(tr("Mark Region\xe2\x80\xa6"), page);
     markRegionBtn->setAccessibleName(tr("Mark a fillable region in the template document"));
     markRegionBtn->setToolTip(tr("Open the source document and drag to mark a fillable region"));
-    actionRow->addWidget(detailRenameBtn_);
-    actionRow->addWidget(detailDuplicateBtn_);
+    actionRow->addWidget(detail_rename_btn_);
+    actionRow->addWidget(detail_duplicate_btn_);
     actionRow->addWidget(markRegionBtn);
-    actionRow->addWidget(detailDeleteBtn_);
+    actionRow->addWidget(detail_delete_btn_);
     actionRow->addStretch(1);
     layout->addLayout(actionRow);
 
     layout->addStretch(1);
 
-    connect(detailRenameBtn_, &QPushButton::clicked,
+    connect(detail_rename_btn_, &QPushButton::clicked,
             this, &MainWindow::onRenameTemplate);
-    connect(detailDuplicateBtn_, &QPushButton::clicked,
+    connect(detail_duplicate_btn_, &QPushButton::clicked,
             this, &MainWindow::onDuplicateTemplate);
-    connect(detailDeleteBtn_, &QPushButton::clicked,
+    connect(detail_delete_btn_, &QPushButton::clicked,
             this, &MainWindow::onDeleteTemplate);
     connect(markRegionBtn, &QPushButton::clicked,
             this, &MainWindow::onMarkRegion);
@@ -293,45 +293,45 @@ void MainWindow::buildDetailPage(QWidget* page) {
 
 void MainWindow::refreshTemplateList() {
     auto previousId = selectedTemplateId();
-    templateList_->blockSignals(true);
-    templateList_->clear();
+    template_list_->blockSignals(true);
+    template_list_->clear();
 
     auto result = service_.listTemplates();
     if (!result) {
         QMessageBox::critical(this, tr("MonDoc"),
             QString::fromStdString(result.error().message()));
-        templateList_->blockSignals(false);
-        centralStack_->setCurrentIndex(0);
+        template_list_->blockSignals(false);
+        central_stack_->setCurrentIndex(0);
         return;
     }
 
-    cachedTemplates_ = std::move(*result);
+    cached_templates_ = std::move(*result);
 
     int restoreRow = -1;
-    for (int i = 0; i < static_cast<int>(cachedTemplates_.size()); ++i) {
-        const auto& tpl = cachedTemplates_[i];
+    for (int i = 0; i < static_cast<int>(cached_templates_.size()); ++i) {
+        const auto& tpl = cached_templates_[i];
         auto* item = new QListWidgetItem(QString::fromStdString(tpl.name_));
         item->setData(kTemplateIdRole, QString::fromStdString(tpl.id_.value()));
-        templateList_->addItem(item);
+        template_list_->addItem(item);
         if (previousId && tpl.id_ == *previousId) {
             restoreRow = i;
         }
     }
-    templateList_->blockSignals(false);
+    template_list_->blockSignals(false);
 
     if (restoreRow >= 0) {
-        templateList_->setCurrentRow(restoreRow);
-    } else if (templateList_->count() == 0) {
-        selectedTemplate_.reset();
-        centralStack_->setCurrentIndex(0);
+        template_list_->setCurrentRow(restoreRow);
+    } else if (template_list_->count() == 0) {
+        selected_template_.reset();
+        central_stack_->setCurrentIndex(0);
     } else {
-        templateList_->setCurrentRow(0);
+        template_list_->setCurrentRow(0);
     }
-    onSearchChanged(searchBox_->text());
+    onSearchChanged(search_box_->text());
 }
 
 std::optional<mondoc::TemplateId> MainWindow::selectedTemplateId() const {
-    auto* item = templateList_->currentItem();
+    auto* item = template_list_->currentItem();
     if (!item) return std::nullopt;
     const QString idStr = item->data(kTemplateIdRole).toString();
     if (idStr.isEmpty()) return std::nullopt;
@@ -339,8 +339,8 @@ std::optional<mondoc::TemplateId> MainWindow::selectedTemplateId() const {
 }
 
 void MainWindow::setAiFieldDetector(mondoc::adapters::ai::AiFieldDetector* detector) {
-    schemaWidget_->setDetector(detector);
-    schemaWidget_->setAiConfigured(detector != nullptr);
+    schema_widget_->setDetector(detector);
+    schema_widget_->setAiConfigured(detector != nullptr);
 }
 
 void MainWindow::onRegisterClicked() {
@@ -365,67 +365,67 @@ void MainWindow::triggerRegistration(const std::filesystem::path& path) {
         return;
     }
 
-    pendingTemplate_ = std::move(result->draft);
-    pendingDocumentText_ = std::move(result->document_text);
-    const QString name = QString::fromStdString(pendingTemplate_.name_).left(40);
-    schemaWidget_->setWindowTitle(tr("Schema \xe2\x80\x94 %1").arg(name));
-    schemaWidget_->setDocumentText(pendingDocumentText_);
-    schemaWidget_->populate(pendingTemplate_.fields_);
-    schemaWidget_->show();
-    schemaWidget_->raise();
+    pending_template_ = std::move(result->draft);
+    pending_document_text_ = std::move(result->document_text);
+    const QString name = QString::fromStdString(pending_template_.name_).left(40);
+    schema_widget_->setWindowTitle(tr("Schema \xe2\x80\x94 %1").arg(name));
+    schema_widget_->setDocumentText(pending_document_text_);
+    schema_widget_->populate(pending_template_.fields_);
+    schema_widget_->show();
+    schema_widget_->raise();
 
     statusBar()->showMessage(
         tr("%1 registered. %n field(s) found.", "",
-           static_cast<int>(pendingTemplate_.fields_.size()))
-            .arg(QString::fromStdString(pendingTemplate_.name_)));
+           static_cast<int>(pending_template_.fields_.size()))
+            .arg(QString::fromStdString(pending_template_.name_)));
 
-    for (const auto& warning : pendingTemplate_.warnings_) {
+    for (const auto& warning : pending_template_.warnings_) {
         QMessageBox::warning(this, tr("MonDoc"), QString::fromStdString(warning));
     }
 }
 
 void MainWindow::onSchemaSaved() {
-    pendingTemplate_.fields_ = schemaWidget_->currentFields();
-    auto result = service_.saveTemplate(pendingTemplate_);
+    pending_template_.fields_ = schema_widget_->currentFields();
+    auto result = service_.saveTemplate(pending_template_);
     if (!result) {
         QMessageBox::critical(this, tr("MonDoc"),
             QString::fromStdString(result.error().message()));
         return;
     }
-    schemaWidget_->hide();
-    const QString savedName = QString::fromStdString(pendingTemplate_.name_);
+    schema_widget_->hide();
+    const QString savedName = QString::fromStdString(pending_template_.name_);
     refreshTemplateList();
     statusBar()->showMessage(
         tr("\xe2\x80\x9c%1\xe2\x80\x9d saved to library.").arg(savedName));
 }
 
 void MainWindow::onSchemaDiscarded() {
-    schemaWidget_->hide();
+    schema_widget_->hide();
 }
 
 void MainWindow::onTemplateSelected(int row) {
-    if (row < 0 || row >= static_cast<int>(cachedTemplates_.size())) {
-        selectedTemplate_.reset();
-        if (exportAction_) exportAction_->setEnabled(false);
-        centralStack_->setCurrentIndex(0);
+    if (row < 0 || row >= static_cast<int>(cached_templates_.size())) {
+        selected_template_.reset();
+        if (export_action_) export_action_->setEnabled(false);
+        central_stack_->setCurrentIndex(0);
         return;
     }
-    selectedTemplate_ = cachedTemplates_[row];
-    if (exportAction_) exportAction_->setEnabled(true);
-    const auto& t = *selectedTemplate_;
-    detailNameLabel_->setText(QString::fromStdString(t.name_));
-    detailFormatLabel_->setText(
+    selected_template_ = cached_templates_[row];
+    if (export_action_) export_action_->setEnabled(true);
+    const auto& t = *selected_template_;
+    detail_name_label_->setText(QString::fromStdString(t.name_));
+    detail_format_label_->setText(
         tr("Format:") + QStringLiteral(" ") +
         QString::fromStdString(t.source_format_));
-    detailFieldCountLabel_->setText(
+    detail_field_count_label_->setText(
         tr("%n field(s) extracted", "", static_cast<int>(t.fields_.size())));
-    detailCreatedLabel_->setText(tr("Added:"));
-    centralStack_->setCurrentIndex(1);
+    detail_created_label_->setText(tr("Added:"));
+    central_stack_->setCurrentIndex(1);
 }
 
 void MainWindow::onSearchChanged(const QString& text) {
-    for (int i = 0; i < templateList_->count(); ++i) {
-        auto* item = templateList_->item(i);
+    for (int i = 0; i < template_list_->count(); ++i) {
+        auto* item = template_list_->item(i);
         const bool match =
             text.isEmpty() || item->text().contains(text, Qt::CaseInsensitive);
         item->setHidden(!match);
@@ -435,7 +435,7 @@ void MainWindow::onSearchChanged(const QString& text) {
 void MainWindow::onRenameTemplate() {
     auto id = selectedTemplateId();
     if (!id) return;
-    const QString currentName = templateList_->currentItem()->text();
+    const QString currentName = template_list_->currentItem()->text();
     bool ok = false;
     const QString newName = QInputDialog::getText(
         this, tr("Rename Template"),
@@ -455,7 +455,7 @@ void MainWindow::onRenameTemplate() {
 void MainWindow::onDuplicateTemplate() {
     auto id = selectedTemplateId();
     if (!id) return;
-    const QString currentName = templateList_->currentItem()->text();
+    const QString currentName = template_list_->currentItem()->text();
     bool ok = false;
     const QString newName = QInputDialog::getText(
         this, tr("Duplicate Template"),
@@ -476,7 +476,7 @@ void MainWindow::onDuplicateTemplate() {
 void MainWindow::onDeleteTemplate() {
     auto id = selectedTemplateId();
     if (!id) return;
-    const QString currentName = templateList_->currentItem()->text();
+    const QString currentName = template_list_->currentItem()->text();
 
     QMessageBox box(this);
     box.setIcon(QMessageBox::Warning);
@@ -498,15 +498,15 @@ void MainWindow::onDeleteTemplate() {
     }
     refreshTemplateList();
     refreshResumeBanner();
-    if (templateList_->count() == 0) {
-        centralStack_->setCurrentIndex(0);
+    if (template_list_->count() == 0) {
+        central_stack_->setCurrentIndex(0);
     }
 }
 
 void MainWindow::showListContextMenu(const QPoint& pos) {
-    auto* item = templateList_->itemAt(pos);
+    auto* item = template_list_->itemAt(pos);
     if (!item) return;
-    templateList_->setCurrentItem(item);
+    template_list_->setCurrentItem(item);
 
     QMenu menu(this);
     menu.addAction(tr("Rename Template"), this, &MainWindow::onRenameTemplate);
@@ -515,7 +515,7 @@ void MainWindow::showListContextMenu(const QPoint& pos) {
     auto* del = menu.addAction(tr("Delete Template"),
                                this, &MainWindow::onDeleteTemplate);
     del->setIcon(QApplication::style()->standardIcon(QStyle::SP_TrashIcon));
-    menu.exec(templateList_->viewport()->mapToGlobal(pos));
+    menu.exec(template_list_->viewport()->mapToGlobal(pos));
 }
 
 bool MainWindow::acceptableDrop(const QList<QUrl>& urls) const {
@@ -579,7 +579,7 @@ void MainWindow::onFillSessionClicked() {
     auto id = selectedTemplateId();
     if (!id) return;
 
-    auto sessionId = fillService_.openSession(*id);
+    auto sessionId = fill_service_.openSession(*id);
     if (!sessionId) {
         QMessageBox::critical(this, tr("MonDoc"),
             QString::fromStdString(sessionId.error().message()));
@@ -596,26 +596,26 @@ void MainWindow::onFillSessionClicked() {
     }
 
     QString err;
-    if (!fillSessionView_->openSession(*sessionId, sourcePaths, &err)) {
+    if (!fill_session_view_->openSession(*sessionId, sourcePaths, &err)) {
         QMessageBox::critical(this, tr("MonDoc"), err);
-        if (auto discardResult = fillService_.discardSession(*sessionId); !discardResult) {
+        if (auto discardResult = fill_service_.discardSession(*sessionId); !discardResult) {
             qWarning("MainWindow::onFillSessionClicked: failed to discard session "
                      "after failed open: %s", discardResult.error().message().c_str());
         }
         return;
     }
-    centralStack_->setCurrentIndex(2);
+    central_stack_->setCurrentIndex(2);
 }
 
 void MainWindow::onSessionBackRequested() {
-    fillSessionView_->clearSession();
-    centralStack_->setCurrentIndex(templateList_->count() == 0 ? 0 : 1);
+    fill_session_view_->clearSession();
+    central_stack_->setCurrentIndex(template_list_->count() == 0 ? 0 : 1);
     refreshResumeBanner();
 }
 
 void MainWindow::onSessionExported(QString fileName) {
-    fillSessionView_->clearSession();
-    centralStack_->setCurrentIndex(templateList_->count() == 0 ? 0 : 1);
+    fill_session_view_->clearSession();
+    central_stack_->setCurrentIndex(template_list_->count() == 0 ? 0 : 1);
     refreshResumeBanner();
     statusBar()->showMessage(
         tr("\xe2\x80\x9c%1\xe2\x80\x9d exported.").arg(fileName), 4000);
@@ -628,15 +628,15 @@ void MainWindow::onSessionExportFailed(QString message) {
 void MainWindow::onResumeRequested(mondoc::FillSessionId sessionId) {
     QString err;
     std::vector<std::filesystem::path> sourcePaths;
-    if (!fillSessionView_->openSession(sessionId, sourcePaths, &err)) {
+    if (!fill_session_view_->openSession(sessionId, sourcePaths, &err)) {
         QMessageBox::critical(this, tr("MonDoc"), err);
         return;
     }
-    centralStack_->setCurrentIndex(2);
+    central_stack_->setCurrentIndex(2);
 }
 
 void MainWindow::onDiscardRequested(mondoc::FillSessionId sessionId) {
-    auto r = fillService_.discardSession(sessionId);
+    auto r = fill_service_.discardSession(sessionId);
     if (!r) {
         QMessageBox::warning(this, tr("MonDoc"),
             QString::fromStdString(r.error().message()));
@@ -645,9 +645,9 @@ void MainWindow::onDiscardRequested(mondoc::FillSessionId sessionId) {
 }
 
 void MainWindow::refreshResumeBanner() {
-    auto drafts = fillService_.listDrafts();
+    auto drafts = fill_service_.listDrafts();
     if (!drafts) {
-        resumeBanner_->setDrafts({});
+        resume_banner_->setDrafts({});
         return;
     }
     std::vector<DraftSummary> rows;
@@ -655,14 +655,14 @@ void MainWindow::refreshResumeBanner() {
     for (const auto& s : *drafts) {
         DraftSummary d;
         d.sessionId = s.id_;
-        auto tpl = templateRepo_.findById(s.template_id_);
+        auto tpl = template_repo_.findById(s.template_id_);
         d.templateName = tpl
             ? QString::fromStdString(tpl->name_)
             : QString::fromStdString(s.template_id_.value());
         d.relativeTimestamp = relativeTimestamp(s.updated_at_unix_);
         rows.push_back(std::move(d));
     }
-    resumeBanner_->setDrafts(rows);
+    resume_banner_->setDrafts(rows);
 }
 
 QString MainWindow::relativeTimestamp(std::int64_t updatedAtUnix) const {
@@ -690,23 +690,23 @@ QString MainWindow::relativeTimestamp(std::int64_t updatedAtUnix) const {
 }
 
 void MainWindow::onSettingsClicked() {
-    SettingsDialog dlg(currentConfig_, this);
+    SettingsDialog dlg(current_config_, this);
     connect(&dlg, &SettingsDialog::settingsSaved, this,
             [this](mondoc::adapters::ai::LlmConfig cfg) {
-                currentConfig_ = cfg;
-                if (reconfigureLlmCallback_) reconfigureLlmCallback_(std::move(cfg));
+                current_config_ = cfg;
+                if (reconfigure_llm_callback_) reconfigure_llm_callback_(std::move(cfg));
                 statusBar()->showMessage(tr("Settings saved."), 3000);
             });
     dlg.exec();
 }
 
 void MainWindow::onExportTemplate() {
-    if (!selectedTemplate_) return;
+    if (!selected_template_) return;
     const QString dest = QFileDialog::getSaveFileName(
         this, tr("Export Template"), QString{},
         tr("MonDoc Bundle (*.mondoc)"));
     if (dest.isEmpty()) return;
-    auto result = service_.exportTemplate(selectedTemplate_->id_, qStringToPath(dest));
+    auto result = service_.exportTemplate(selected_template_->id_, qStringToPath(dest));
     if (result) {
         statusBar()->showMessage(tr("Template exported."), 3000);
     } else {
@@ -743,16 +743,16 @@ void MainWindow::onImportTemplate() {
 }
 
 void MainWindow::onMarkRegion() {
-    if (!selectedTemplate_) return;
-    RegionMarkViewer dlg(selectedTemplate_->source_path_,
-                         QString::fromStdString(selectedTemplate_->name_), this);
+    if (!selected_template_) return;
+    RegionMarkViewer dlg(selected_template_->source_path_,
+                         QString::fromStdString(selected_template_->name_), this);
     if (dlg.exec() != QDialog::Accepted) return;
-    pendingTemplate_ = *selectedTemplate_;
-    pendingDocumentText_.clear();
-    schemaWidget_->setDocumentText(pendingDocumentText_);
-    schemaWidget_->populate(pendingTemplate_.fields_);
-    schemaWidget_->addFieldExternal(dlg.field());
-    schemaWidget_->show();
+    pending_template_ = *selected_template_;
+    pending_document_text_.clear();
+    schema_widget_->setDocumentText(pending_document_text_);
+    schema_widget_->populate(pending_template_.fields_);
+    schema_widget_->addFieldExternal(dlg.field());
+    schema_widget_->show();
 }
 
 void MainWindow::onAboutClicked() {

@@ -39,26 +39,26 @@ ChatPane::ChatPane(QWidget* parent) : QWidget(parent) {
         tr("Type a refinement\xe2\x80\xa6 e.g. 'use ISO date format'"));
     input_->setAccessibleName(tr("Chat with AI"));
 
-    sendBtn_ = new QPushButton(tr("Send Message"), this);
-    sendBtn_->setStyleSheet(accentButtonStyle());
-    sendBtn_->setAccessibleName(tr("Send chat message"));
-    sendBtn_->setEnabled(false);
+    send_btn_ = new QPushButton(tr("Send Message"), this);
+    send_btn_->setStyleSheet(accentButtonStyle());
+    send_btn_->setAccessibleName(tr("Send chat message"));
+    send_btn_->setEnabled(false);
 
     row->addWidget(input_, 1);
-    row->addWidget(sendBtn_, 0);
+    row->addWidget(send_btn_, 0);
 
     layout->addWidget(history_, 1);
     layout->addLayout(row, 0);
 
     connect(input_, &QLineEdit::returnPressed, this, &ChatPane::onSendClicked);
-    connect(sendBtn_, &QPushButton::clicked, this, &ChatPane::onSendClicked);
+    connect(send_btn_, &QPushButton::clicked, this, &ChatPane::onSendClicked);
     connect(input_, &QLineEdit::textChanged, this, [this](const QString&) {
-        sendBtn_->setEnabled(!busy_ && !input_->text().trimmed().isEmpty());
+        send_btn_->setEnabled(!busy_ && !input_->text().trimmed().isEmpty());
     });
 }
 
 void ChatPane::setLastPass1Facts(std::vector<mondoc::domain::AiExtractedFact> facts) {
-    lastPass1Facts_ = std::move(facts);
+    last_pass1_facts_ = std::move(facts);
 }
 
 void ChatPane::appendMessage(const QString& prefix, const QString& body, bool italic) {
@@ -94,7 +94,7 @@ void ChatPane::appendSystemMessage(const QString& text) {
 void ChatPane::setBusy(bool busy) {
     busy_ = busy;
     input_->setEnabled(!busy);
-    sendBtn_->setEnabled(!busy && !input_->text().trimmed().isEmpty());
+    send_btn_->setEnabled(!busy && !input_->text().trimmed().isEmpty());
 }
 
 QString ChatPane::currentInputText() const {
@@ -107,7 +107,7 @@ void ChatPane::clearInput() {
 
 void ChatPane::clearHistory() {
     history_->clear();
-    lastPass1Facts_.clear();
+    last_pass1_facts_.clear();
 }
 
 void ChatPane::onSendClicked() {
@@ -117,7 +117,7 @@ void ChatPane::onSendClicked() {
     appendUserMessage(text);
     clearInput();
     setBusy(true);
-    emit refinementRequested(text, lastPass1Facts_);
+    emit refinementRequested(text, last_pass1_facts_);
 }
 
 }  // namespace mondoc::ui

@@ -13,9 +13,9 @@ AiFillWorker::AiFillWorker(mondoc::services::FillSessionService& service,
                            QObject* parent)
     : QObject(parent),
       service_(service),
-      sessionId_(std::move(sessionId)),
+      session_id_(std::move(sessionId)),
       sources_(std::move(sources)),
-      freeFormText_(std::move(freeFormText)) {}
+      free_form_text_(std::move(freeFormText)) {}
 
 void AiFillWorker::requestCancel() noexcept {
     cancelled_.store(true, std::memory_order_relaxed);
@@ -23,7 +23,7 @@ void AiFillWorker::requestCancel() noexcept {
 
 void AiFillWorker::run() {
     qInfo("AiFillWorker::run started");
-    auto result = service_.aiFill(sessionId_, sources_, freeFormText_, cancelled_);
+    auto result = service_.aiFill(session_id_, sources_, free_form_text_, cancelled_);
     if (result) {
         qInfo("AiFillWorker::run finished");
         emit finished(std::move(*result));
