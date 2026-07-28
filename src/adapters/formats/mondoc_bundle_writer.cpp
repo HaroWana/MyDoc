@@ -76,11 +76,14 @@ nlohmann::json locationToJson(const std::optional<mondoc::domain::FieldLocation>
     }
     if (loc->text.has_value()) {
         const auto& tx = *loc->text;
-        return nlohmann::json{
+        nlohmann::json j{
             {"type", "text"},
             {"paragraph_index", tx.paragraph_index},
             {"char_offset", tx.char_offset},
         };
+        if (tx.char_end > 0) j["char_end"] = tx.char_end;
+        if (!tx.excerpt.empty()) j["excerpt"] = tx.excerpt;
+        return j;
     }
     return nlohmann::json(nullptr);
 }

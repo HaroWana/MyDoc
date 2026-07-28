@@ -237,3 +237,40 @@ TEST_CASE("MondocBundle: PdfLocation round-trips through bundle [phase05][adapte
     REQUIRE(result->fields_[0].location_->pdf->w == Catch::Approx(0.3));
     REQUIRE(result->fields_[0].location_->pdf->h == Catch::Approx(0.4));
 }
+
+TEST_CASE("MondocBundle: TextLocation range and excerpt round-trip through bundle [adapters.formats.mondoc][ui-8]") {
+    TempSourceFile src{"mondoc_textloc_source.txt"};
+    Template tpl;
+    tpl.id_ = mondoc::TemplateId{"tloc-tpl"};
+    tpl.name_ = "Text Template";
+    tpl.source_format_ = "txt";
+    tpl.source_path_ = src.path;
+    Field f;
+    f.id_ = mondoc::FieldId{"tloc-field"};
+    f.name_ = "title";
+    f.type_ = FieldType::Text;
+    f.origin_ = FieldOrigin::Unknown;
+    mondoc::domain::TextLocation tl;
+    tl.paragraph_index = 1;
+    tl.char_offset = 5;
+    tl.char_end = 12;
+    tl.excerpt = "excerpt";
+    f.location_ = FieldLocation{std::nullopt, tl};
+    tpl.fields_.push_back(f);
+
+    TempFile out{tempBundlePath("textloc_rt")};
+    MondocBundleWriter writer;
+    REQUIRE(writer.write(tpl, out.path).has_value());
+
+    MondocBundleReader reader;
+    auto result = reader.read(out.path);
+    REQUIRE(result.has_value());
+    REQUIRE(result->fields_.size() == 1);
+    const auto& loc = result->fields_[0].location_;
+    REQUIRE(loc.has_value());
+    REQUIRE(loc->text.has_value());
+    REQUIRE(loc->text->paragraph_index == 1);
+    REQUIRE(loc->text->char_offset == 5);
+    REQUIRE(loc->text->char_end == 12);
+    REQUIRE(loc->text->excerpt == "excerpt");
+}

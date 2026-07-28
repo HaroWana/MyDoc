@@ -83,6 +83,8 @@ std::string locationToJson(const std::optional<mondoc::domain::FieldLocation>& l
         j["type"]            = "text";
         j["paragraph_index"] = loc->text->paragraph_index;
         j["char_offset"]     = loc->text->char_offset;
+        if (loc->text->char_end > 0) j["char_end"] = loc->text->char_end;
+        if (!loc->text->excerpt.empty()) j["excerpt"] = loc->text->excerpt;
     } else {
         return "";
     }
@@ -108,6 +110,8 @@ std::optional<mondoc::domain::FieldLocation> locationFromJson(const std::string&
             mondoc::domain::TextLocation tl{};
             tl.paragraph_index = j.value("paragraph_index", 0);
             tl.char_offset = j.value("char_offset", 0);
+            tl.char_end = j.value("char_end", 0);
+            tl.excerpt = j.value("excerpt", std::string{});
             return mondoc::domain::FieldLocation{std::nullopt, tl};
         }
     } catch (...) {}

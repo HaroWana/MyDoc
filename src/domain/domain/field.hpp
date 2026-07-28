@@ -23,7 +23,9 @@ struct PdfLocation {
 
 struct TextLocation {
     int paragraph_index;
-    int char_offset;
+    int char_offset;      // UTF-8 byte offset of the marked range's start
+    int char_end = 0;     // exclusive UTF-8 byte end; 0 = no range recorded (legacy)
+    std::string excerpt;  // capped copy of the marked text, for re-anchoring
 };
 
 struct FieldLocation {

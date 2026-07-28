@@ -358,3 +358,58 @@ TEST_CASE("SqliteTemplateRepository: listAll attaches fields to the right templa
     REQUIRE((*list)[1].fields_.size() == 1);
     REQUIRE((*list)[1].fields_[0].name_ == "b_only");
 }
+
+TEST_CASE("SqliteTemplateRepository: TextLocation range and excerpt round-trip",
+          "[storage.template_repo][ui-8]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    REQUIRE(runMigrations(*conn).has_value());
+    SqliteTemplateRepository repo(*conn);
+
+    auto t = makeTemplate("t1", "Memo");
+    auto f = makeField("f1", "title");
+    mondoc::domain::TextLocation tl;
+    tl.paragraph_index = 2;
+    tl.char_offset = 10;
+    tl.char_end = 25;
+    tl.excerpt = "hello sele";
+    f.location_ = mondoc::domain::FieldLocation{std::nullopt, tl};
+    t.fields_.push_back(std::move(f));
+    REQUIRE(repo.save(t).has_value());
+
+    auto loaded = repo.findById(mondoc::TemplateId{"t1"});
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->fields_.at(0).location_.has_value());
+    const auto& text = loaded->fields_.at(0).location_->text;
+    REQUIRE(text.has_value());
+    REQUIRE(text->paragraph_index == 2);
+    REQUIRE(text->char_offset == 10);
+    REQUIRE(text->char_end == 25);
+    REQUIRE(text->excerpt == "hello sele");
+}
+
+TEST_CASE("SqliteTemplateRepository: legacy location_json without char_end parses",
+          "[storage.template_repo][ui-8]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    REQUIRE(runMigrations(*conn).has_value());
+    SqliteTemplateRepository repo(*conn);
+
+    auto t = makeTemplate("t1", "Memo");
+    t.fields_.push_back(makeField("f1", "title"));
+    REQUIRE(repo.save(t).has_value());
+
+    SQLite::Statement upd(conn->raw(),
+        "UPDATE template_fields SET location_json ="
+        " '{\"type\":\"text\",\"paragraph_index\":1,\"char_offset\":5}'"
+        " WHERE id = 'f1'");
+    upd.exec();
+
+    auto loaded = repo.findById(mondoc::TemplateId{"t1"});
+    REQUIRE(loaded.has_value());
+    const auto& text = loaded->fields_.at(0).location_->text;
+    REQUIRE(text.has_value());
+    REQUIRE(text->char_offset == 5);
+    REQUIRE(text->char_end == 0);
+    REQUIRE(text->excerpt.empty());
+}

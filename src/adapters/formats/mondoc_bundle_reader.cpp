@@ -65,6 +65,8 @@ locationFromJson(const nlohmann::json& j) {
         mondoc::domain::TextLocation tx{};
         tx.paragraph_index = j.value("paragraph_index", 0);
         tx.char_offset = j.value("char_offset", 0);
+        tx.char_end = j.value("char_end", 0);
+        tx.excerpt = j.value("excerpt", std::string{});
         loc.text = tx;
         return loc;
     }
