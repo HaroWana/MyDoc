@@ -27,8 +27,8 @@ private:
     LlmClient(std::string host, std::string apiKey, std::string pathPrefix);
 
     std::string host_;
-    std::string apiKey_;
-    std::string pathPrefix_;
+    std::string api_key_;
+    std::string path_prefix_;
 };
 
 }  // namespace mondoc::adapters::ai

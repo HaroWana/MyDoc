@@ -35,10 +35,10 @@ public:
                        mondoc::domain::ITemplateRepository& templateRepo,
                        mondoc::adapters::ai::AiFillPipeline* aiPipeline = nullptr) noexcept;
 
-    bool isAiConfigured() const noexcept { return aiPipeline_ != nullptr; }
+    bool isAiConfigured() const noexcept { return ai_pipeline_ != nullptr; }
 
     void setAiPipeline(mondoc::adapters::ai::AiFillPipeline* pipeline) noexcept {
-        aiPipeline_ = pipeline;
+        ai_pipeline_ = pipeline;
     }
 
     mondoc::expected<mondoc::FillSessionId, mondoc::Error>
@@ -80,9 +80,9 @@ public:
     readSourceText(const std::filesystem::path& path);
 
 private:
-    mondoc::domain::IFillSessionRepository& sessionRepo_;
-    mondoc::domain::ITemplateRepository& templateRepo_;
-    mondoc::adapters::ai::AiFillPipeline* aiPipeline_ = nullptr;
+    mondoc::domain::IFillSessionRepository& session_repo_;
+    mondoc::domain::ITemplateRepository& template_repo_;
+    mondoc::adapters::ai::AiFillPipeline* ai_pipeline_ = nullptr;
 };
 
 }  // namespace mondoc::services

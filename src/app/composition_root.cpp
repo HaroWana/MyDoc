@@ -9,7 +9,7 @@ using mondoc::adapters::ai::LlmConfig;
 
 static std::unique_ptr<LlmClient> makeClient(const LlmConfig& cfg) {
     if (!cfg.isConfigured()) return nullptr;
-    auto result = LlmClient::create(cfg.api_url, cfg.api_key);
+    auto result = LlmClient::create(cfg.api_url_, cfg.api_key_);
     if (!result.has_value()) return nullptr;
     return std::move(result.value());
 }

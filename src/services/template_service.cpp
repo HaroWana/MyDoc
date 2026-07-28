@@ -24,7 +24,7 @@ constexpr std::uint64_t kMaxImportedSourceBytes = 50ULL * 1024 * 1024;
 
 TemplateService::TemplateService(mondoc::domain::ITemplateRepository& repo,
                                  std::filesystem::path dataDir)
-    : repo_(repo), dataDir_(std::move(dataDir)) {}
+    : repo_(repo), data_dir_(std::move(dataDir)) {}
 
 mondoc::expected<DraftWithText, mondoc::Error>
 TemplateService::extractDraft(const std::filesystem::path& path) {
@@ -135,7 +135,7 @@ TemplateService::importTemplate(const std::filesystem::path& src,
 
     if (!tpl.source_path_.empty()) {
         const std::string entryName = tpl.source_path_.filename().string();
-        const std::filesystem::path destDir = dataDir_ / "imported" / tpl.id_.value();
+        const std::filesystem::path destDir = data_dir_ / "imported" / tpl.id_.value();
         const std::filesystem::path dest = destDir / entryName;
 
         std::error_code ec;

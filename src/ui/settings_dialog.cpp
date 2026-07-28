@@ -27,16 +27,16 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
     setModal(true);
     setMinimumWidth(420);
 
-    urlEdit_->setText(QString::fromStdString(current.api_url));
+    urlEdit_->setText(QString::fromStdString(current.api_url_));
     urlEdit_->setPlaceholderText(QStringLiteral("https://api.openai.com/v1"));
     urlEdit_->setAccessibleName(tr("API URL"));
 
-    keyEdit_->setText(QString::fromStdString(current.api_key));
+    keyEdit_->setText(QString::fromStdString(current.api_key_));
     keyEdit_->setPlaceholderText(QStringLiteral("sk-\xe2\x80\xa6"));
     keyEdit_->setEchoMode(QLineEdit::Password);
     keyEdit_->setAccessibleName(tr("API Key"));
 
-    modelEdit_->setText(QString::fromStdString(current.model));
+    modelEdit_->setText(QString::fromStdString(current.model_));
     modelEdit_->setPlaceholderText(QStringLiteral("gpt-4o-mini"));
     modelEdit_->setAccessibleName(tr("Model name"));
 
@@ -77,9 +77,9 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
 
 void SettingsDialog::onSave() {
     mondoc::adapters::ai::LlmConfig cfg;
-    cfg.api_url = urlEdit_->text().trimmed().toStdString();
-    cfg.api_key = keyEdit_->text().toStdString();
-    cfg.model = modelEdit_->text().trimmed().toStdString();
+    cfg.api_url_ = urlEdit_->text().trimmed().toStdString();
+    cfg.api_key_ = keyEdit_->text().toStdString();
+    cfg.model_ = modelEdit_->text().trimmed().toStdString();
 
     const auto result = cfg.saveToJson(configPath_);
     if (!result) {

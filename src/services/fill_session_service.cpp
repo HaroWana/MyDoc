@@ -32,13 +32,13 @@ FillSessionService::FillSessionService(
     mondoc::domain::IFillSessionRepository& sessionRepo,
     mondoc::domain::ITemplateRepository& templateRepo,
     mondoc::adapters::ai::AiFillPipeline* aiPipeline) noexcept
-    : sessionRepo_(sessionRepo),
-      templateRepo_(templateRepo),
-      aiPipeline_(aiPipeline) {}
+    : session_repo_(sessionRepo),
+      template_repo_(templateRepo),
+      ai_pipeline_(aiPipeline) {}
 
 mondoc::expected<mondoc::FillSessionId, mondoc::Error>
 FillSessionService::openSession(const mondoc::TemplateId& templateId) {
-    auto tpl = templateRepo_.findById(templateId);
+    auto tpl = template_repo_.findById(templateId);
     if (!tpl) return mondoc::unexpected(tpl.error());
 
     mondoc::domain::FillSession s;
@@ -47,7 +47,7 @@ FillSessionService::openSession(const mondoc::TemplateId& templateId) {
     s.status_          = mondoc::domain::FillStatus::Created;
     s.created_at_unix_ = 0;
     s.updated_at_unix_ = 0;
-    auto saved = sessionRepo_.save(s);
+    auto saved = session_repo_.save(s);
     if (!saved) return mondoc::unexpected(saved.error());
     return s.id_;
 }
@@ -58,7 +58,7 @@ FillSessionService::setFieldValue(const mondoc::FillSessionId& sessionId,
                                    const std::string& value) {
     // Single atomic repo call: value and Manual confidence must land together,
     // or a concurrent AI write can observe/land in the gap between two calls.
-    return sessionRepo_.setValueManual(sessionId, fieldId, value);
+    return session_repo_.setValueManual(sessionId, fieldId, value);
 }
 
 mondoc::expected<std::vector<mondoc::domain::Fill>, mondoc::Error>
@@ -66,13 +66,13 @@ FillSessionService::aiFill(const mondoc::FillSessionId& sessionId,
                            const std::vector<mondoc::domain::AiSourceDoc>& sources,
                            const std::string& freeFormText,
                            const std::atomic<bool>& cancelled) {
-    if (!aiPipeline_) {
+    if (!ai_pipeline_) {
         return mondoc::unexpected(
             mondoc::Error::invalidArgument("AI not configured"));
     }
-    auto sessionRes = sessionRepo_.findById(sessionId);
+    auto sessionRes = session_repo_.findById(sessionId);
     if (!sessionRes) return mondoc::unexpected(sessionRes.error());
-    auto tplRes = templateRepo_.findById(sessionRes->template_id_);
+    auto tplRes = template_repo_.findById(sessionRes->template_id_);
     if (!tplRes) return mondoc::unexpected(tplRes.error());
 
     mondoc::adapters::ai::RunInput runInput;
@@ -80,7 +80,7 @@ FillSessionService::aiFill(const mondoc::FillSessionId& sessionId,
     runInput.free_form_text_ = freeFormText;
     runInput.sources_       = sources;
 
-    auto pipeResult = aiPipeline_->run(runInput, cancelled);
+    auto pipeResult = ai_pipeline_->run(runInput, cancelled);
     if (!pipeResult) {
         return mondoc::unexpected(llmErrorToError(pipeResult.error()));
     }
@@ -93,12 +93,12 @@ FillSessionService::aiFill(const mondoc::FillSessionId& sessionId,
         // that race must be atomic in the repo (check-then-act here would
         // still race), so the write and the Manual/non-empty guard happen in
         // a single SQL statement.
-        auto written = sessionRepo_.upsertValueIfNotManual(
+        auto written = session_repo_.upsertValueIfNotManual(
             sessionId, aiFill.field_id_, aiFill.current_value_);
         if (!written) return mondoc::unexpected(written.error());
 
         if (!*written) {
-            auto freshSession = sessionRepo_.findById(sessionId);
+            auto freshSession = session_repo_.findById(sessionId);
             if (!freshSession) return mondoc::unexpected(freshSession.error());
             for (const auto& f : freshSession->fills_) {
                 if (f.field_id_ == aiFill.field_id_) {
@@ -109,10 +109,10 @@ FillSessionService::aiFill(const mondoc::FillSessionId& sessionId,
             continue;
         }
 
-        auto setConf = sessionRepo_.upsertConfidence(
+        auto setConf = session_repo_.upsertConfidence(
             sessionId, aiFill.field_id_, aiFill.confidence_);
         if (!setConf) return mondoc::unexpected(setConf.error());
-        auto setRefs = sessionRepo_.replaceSourceRefs(
+        auto setRefs = session_repo_.replaceSourceRefs(
             sessionId, aiFill.field_id_, aiFill.source_refs_);
         if (!setRefs) return mondoc::unexpected(setRefs.error());
         out.push_back(aiFill);
@@ -127,13 +127,13 @@ FillSessionService::refineField(
         const std::vector<mondoc::domain::AiSourceDoc>& sources,
         const std::vector<mondoc::domain::AiExtractedFact>& lastPass1Facts,
         const std::atomic<bool>& cancelled) {
-    if (!aiPipeline_) {
+    if (!ai_pipeline_) {
         return mondoc::unexpected(
             mondoc::Error::invalidArgument("AI not configured"));
     }
-    auto sessionRes = sessionRepo_.findById(sessionId);
+    auto sessionRes = session_repo_.findById(sessionId);
     if (!sessionRes) return mondoc::unexpected(sessionRes.error());
-    auto tplRes = templateRepo_.findById(sessionRes->template_id_);
+    auto tplRes = template_repo_.findById(sessionRes->template_id_);
     if (!tplRes) return mondoc::unexpected(tplRes.error());
 
     mondoc::adapters::ai::RefineInput refineInput;
@@ -143,7 +143,7 @@ FillSessionService::refineField(
     refineInput.last_pass1_facts_ = lastPass1Facts;
     refineInput.user_message_     = userMessage;
 
-    auto pipeResult = aiPipeline_->refine(refineInput, &cancelled);
+    auto pipeResult = ai_pipeline_->refine(refineInput, &cancelled);
     if (!pipeResult) {
         return mondoc::unexpected(llmErrorToError(pipeResult.error()));
     }
@@ -151,19 +151,19 @@ FillSessionService::refineField(
     std::vector<mondoc::domain::Fill> out;
     out.reserve(pipeResult->size());
     for (const auto& upd : *pipeResult) {
-        auto written = sessionRepo_.upsertValueIfNotManual(
+        auto written = session_repo_.upsertValueIfNotManual(
             sessionId, upd.field_id_, upd.current_value_);
         if (!written) return mondoc::unexpected(written.error());
         if (!*written) continue;
 
-        auto setConf = sessionRepo_.upsertConfidence(
+        auto setConf = session_repo_.upsertConfidence(
             sessionId, upd.field_id_, upd.confidence_);
         if (!setConf) return mondoc::unexpected(setConf.error());
         // DSA-8: refine has no citation model yet, so any refs stored from a
         // prior aiFill now describe stale evidence for the OLD value. Stale
         // provenance is worse than none — clear it rather than leave it
         // pointing at the wrong text.
-        auto clearRefs = sessionRepo_.replaceSourceRefs(sessionId, upd.field_id_, {});
+        auto clearRefs = session_repo_.replaceSourceRefs(sessionId, upd.field_id_, {});
         if (!clearRefs) return mondoc::unexpected(clearRefs.error());
         out.push_back(upd);
     }
@@ -182,16 +182,16 @@ std::optional<AiFailureKind> classifyAiFailure(const mondoc::Error& e) {
 
 mondoc::expected<std::vector<mondoc::domain::FillSession>, mondoc::Error>
 FillSessionService::listDrafts() {
-    return sessionRepo_.listDrafts();
+    return session_repo_.listDrafts();
 }
 
 mondoc::expected<mondoc::domain::FillSession, mondoc::Error>
 FillSessionService::resumeSession(const mondoc::FillSessionId& id) {
-    auto s = sessionRepo_.findById(id);
+    auto s = session_repo_.findById(id);
     if (!s) return mondoc::unexpected(s.error());
     if (s->status_ == mondoc::domain::FillStatus::Created) {
         s->status_ = mondoc::domain::FillStatus::Reviewing;
-        auto saved = sessionRepo_.save(*s);
+        auto saved = session_repo_.save(*s);
         if (!saved) return mondoc::unexpected(saved.error());
     }
     return *s;
@@ -199,16 +199,16 @@ FillSessionService::resumeSession(const mondoc::FillSessionId& id) {
 
 mondoc::expected<void, mondoc::Error>
 FillSessionService::discardSession(const mondoc::FillSessionId& id) {
-    return sessionRepo_.remove(id);
+    return session_repo_.remove(id);
 }
 
 mondoc::expected<void, mondoc::Error>
 FillSessionService::exportSession(const mondoc::FillSessionId& id,
                                    ExportFormat format,
                                    const std::filesystem::path& destPath) {
-    auto session = sessionRepo_.findById(id);
+    auto session = session_repo_.findById(id);
     if (!session) return mondoc::unexpected(session.error());
-    auto tpl = templateRepo_.findById(session->template_id_);
+    auto tpl = template_repo_.findById(session->template_id_);
     if (!tpl) return mondoc::unexpected(tpl.error());
 
     std::string_view ext;
@@ -227,7 +227,7 @@ FillSessionService::exportSession(const mondoc::FillSessionId& id,
     if (!writeResult) return mondoc::unexpected(writeResult.error());
 
     session->status_ = mondoc::domain::FillStatus::Exported;
-    auto saved = sessionRepo_.save(*session);
+    auto saved = session_repo_.save(*session);
     if (!saved) return mondoc::unexpected(saved.error());
     return {};
 }

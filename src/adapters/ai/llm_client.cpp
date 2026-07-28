@@ -73,8 +73,8 @@ LlmClient::create(std::string host, std::string apiKey, std::string pathPrefix) 
 
 LlmClient::LlmClient(std::string host, std::string apiKey, std::string pathPrefix)
     : host_(std::move(host)),
-      apiKey_(std::move(apiKey)),
-      pathPrefix_(std::move(pathPrefix)) {}
+      api_key_(std::move(apiKey)),
+      path_prefix_(std::move(pathPrefix)) {}
 
 mondoc::expected<std::string, LlmError>
 LlmClient::chat(const std::string& body, const std::atomic<bool>* cancelled) {
@@ -84,7 +84,7 @@ LlmClient::chat(const std::string& body, const std::atomic<bool>* cancelled) {
     cli.set_write_timeout(std::chrono::seconds(10));
 
     httplib::Headers headers = {
-        {"Authorization", "Bearer " + apiKey_},
+        {"Authorization", "Bearer " + api_key_},
         {"Content-Type",  "application/json"}
     };
 
@@ -104,7 +104,7 @@ LlmClient::chat(const std::string& body, const std::atomic<bool>* cancelled) {
         return true;
     };
 
-    auto res = cli.Post(pathPrefix_ + "/chat/completions",
+    auto res = cli.Post(path_prefix_ + "/chat/completions",
                         headers, body, "application/json", receiver);
 
     if (wasCancelled) {

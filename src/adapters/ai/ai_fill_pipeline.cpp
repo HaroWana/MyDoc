@@ -143,7 +143,7 @@ AiFillPipeline::run(const RunInput& input, const std::atomic<bool>& cancelled) {
     }
 
     nlohmann::json pass1Body = {
-        {"model", config_.model},
+        {"model", config_.model_},
         {"messages", nlohmann::json::array({
             nlohmann::json{{"role","system"},{"content", std::string(kPass1SystemPrompt)}},
             nlohmann::json{{"role","user"},  {"content", buildPass1UserPrompt(input.sources_, input.free_form_text_)}},
@@ -162,7 +162,7 @@ AiFillPipeline::run(const RunInput& input, const std::atomic<bool>& cancelled) {
     auto facts = validatePass1Facts(*pass1Resp, input.sources_);
 
     nlohmann::json pass2Body = {
-        {"model", config_.model},
+        {"model", config_.model_},
         {"messages", nlohmann::json::array({
             nlohmann::json{{"role","system"},{"content", std::string(kPass2SystemPrompt)}},
             nlohmann::json{{"role","user"},  {"content", buildPass2UserPrompt(*input.tpl_, facts)}},
@@ -241,7 +241,7 @@ AiFillPipeline::refine(const RefineInput& input, const std::atomic<bool>* cancel
     }
 
     nlohmann::json body = {
-        {"model", config_.model},
+        {"model", config_.model_},
         {"messages", nlohmann::json::array({
             nlohmann::json{{"role","system"},{"content", std::string(kRefineSystemPrompt)}},
             nlohmann::json{{"role","user"},  {"content",

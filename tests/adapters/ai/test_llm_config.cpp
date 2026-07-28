@@ -31,9 +31,9 @@ TEST_CASE("LlmConfig::loadFromJson: missing file returns unconfigured (FILL-12)"
     auto result = LlmConfig::loadFromJson(path);
     REQUIRE(result.has_value());
     REQUIRE_FALSE(result->isConfigured());
-    REQUIRE(result->api_url.empty());
-    REQUIRE(result->api_key.empty());
-    REQUIRE(result->model.empty());
+    REQUIRE(result->api_url_.empty());
+    REQUIRE(result->api_key_.empty());
+    REQUIRE(result->model_.empty());
 }
 
 TEST_CASE("LlmConfig::loadFromJson: empty file returns unconfigured (FILL-12)",
@@ -57,9 +57,9 @@ TEST_CASE("LlmConfig::loadFromJson: well-formed config round-trips",
     auto result = LlmConfig::loadFromJson(tmp.path);
     REQUIRE(result.has_value());
     REQUIRE(result->isConfigured());
-    REQUIRE(result->api_url == "https://hub.example.com/v1");
-    REQUIRE(result->api_key == "sk-test");
-    REQUIRE(result->model == "gpt-4o");
+    REQUIRE(result->api_url_ == "https://hub.example.com/v1");
+    REQUIRE(result->api_key_ == "sk-test");
+    REQUIRE(result->model_ == "gpt-4o");
 }
 
 TEST_CASE("LlmConfig::loadFromJson: malformed JSON returns Error",
@@ -85,9 +85,9 @@ TEST_CASE("LlmConfig::loadFromJson: empty object returns unconfigured (partial =
     auto result = LlmConfig::loadFromJson(tmp.path);
     REQUIRE(result.has_value());
     REQUIRE_FALSE(result->isConfigured());
-    REQUIRE(result->api_url.empty());
-    REQUIRE(result->api_key.empty());
-    REQUIRE(result->model.empty());
+    REQUIRE(result->api_url_.empty());
+    REQUIRE(result->api_key_.empty());
+    REQUIRE(result->model_.empty());
 }
 
 TEST_CASE("LlmConfig::loadFromJson: wrong type for api_url returns Error",
@@ -105,18 +105,18 @@ TEST_CASE("LlmConfig::saveToJson: round-trips all three fields [phase05][adapter
     TempFile tmp{path};
 
     LlmConfig cfg;
-    cfg.api_url = "https://hub.example.com/v1";
-    cfg.api_key = "sk-secret";
-    cfg.model   = "gpt-4o";
+    cfg.api_url_ = "https://hub.example.com/v1";
+    cfg.api_key_ = "sk-secret";
+    cfg.model_   = "gpt-4o";
 
     auto saveResult = cfg.saveToJson(path);
     REQUIRE(saveResult.has_value());
 
     auto loadResult = LlmConfig::loadFromJson(path);
     REQUIRE(loadResult.has_value());
-    REQUIRE(loadResult->api_url == "https://hub.example.com/v1");
-    REQUIRE(loadResult->api_key == "sk-secret");
-    REQUIRE(loadResult->model == "gpt-4o");
+    REQUIRE(loadResult->api_url_ == "https://hub.example.com/v1");
+    REQUIRE(loadResult->api_key_ == "sk-secret");
+    REQUIRE(loadResult->model_ == "gpt-4o");
     REQUIRE(loadResult->isConfigured());
 }
 
@@ -127,9 +127,9 @@ TEST_CASE("LlmConfig::saveToJson: creates key file with 0600 permissions from th
     TempFile tmp{path};
 
     LlmConfig cfg;
-    cfg.api_url = "https://hub.example.com/v1";
-    cfg.api_key = "sk-secret";
-    cfg.model   = "gpt-4o";
+    cfg.api_url_ = "https://hub.example.com/v1";
+    cfg.api_key_ = "sk-secret";
+    cfg.model_   = "gpt-4o";
 
     auto saveResult = cfg.saveToJson(path);
     REQUIRE(saveResult.has_value());
@@ -183,9 +183,9 @@ TEST_CASE("LlmConfig::saveToJson: unwritable path returns Error [phase05][adapte
     std::filesystem::permissions(parentDir, std::filesystem::perms::none);
 
     LlmConfig cfg;
-    cfg.api_url = "https://x.com";
-    cfg.api_key = "k";
-    cfg.model   = "m";
+    cfg.api_url_ = "https://x.com";
+    cfg.api_key_ = "k";
+    cfg.model_   = "m";
     auto result = cfg.saveToJson(badPath);
 
     std::filesystem::permissions(parentDir, std::filesystem::perms::owner_all);

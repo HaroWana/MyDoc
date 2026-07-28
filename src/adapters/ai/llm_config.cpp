@@ -46,11 +46,11 @@ LlmConfig::loadFromJson(const std::filesystem::path& path) {
     LlmConfig cfg;
     try {
         if (doc.contains("api_url"))
-            cfg.api_url = doc.at("api_url").get<std::string>();
+            cfg.api_url_ = doc.at("api_url").get<std::string>();
         if (doc.contains("api_key"))
-            cfg.api_key = doc.at("api_key").get<std::string>();
+            cfg.api_key_ = doc.at("api_key").get<std::string>();
         if (doc.contains("model"))
-            cfg.model = doc.at("model").get<std::string>();
+            cfg.model_ = doc.at("model").get<std::string>();
     } catch (const nlohmann::json::type_error& e) {
         return mondoc::unexpected(mondoc::Error::generic(
             std::string{"llm config wrong type: "} + e.what()));
@@ -61,9 +61,9 @@ LlmConfig::loadFromJson(const std::filesystem::path& path) {
 mondoc::expected<void, mondoc::Error>
 LlmConfig::saveToJson(const std::filesystem::path& path) const {
     nlohmann::json doc;
-    doc["api_url"] = api_url;
-    doc["api_key"] = api_key;
-    doc["model"]   = model;
+    doc["api_url"] = api_url_;
+    doc["api_key"] = api_key_;
+    doc["model"]   = model_;
 
     std::error_code ec;
     if (path.has_parent_path()) {

@@ -29,9 +29,9 @@ using mondoc::tests_support::makeChatCompletion;
 
 LlmConfig testConfig() {
     LlmConfig cfg;
-    cfg.api_url = "http://fake";
-    cfg.api_key = "key";
-    cfg.model   = "test-model";
+    cfg.api_url_ = "http://fake";
+    cfg.api_key_ = "key";
+    cfg.model_   = "test-model";
     return cfg;
 }
 

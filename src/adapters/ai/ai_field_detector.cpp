@@ -80,7 +80,7 @@ AiFieldDetector::detect(const std::string& documentText,
     }
 
     nlohmann::json body = {
-        {"model", config_.model},
+        {"model", config_.model_},
         {"messages", nlohmann::json::array({
             nlohmann::json{{"role", "system"}, {"content", std::string(kDetectSystemPrompt)}},
             nlohmann::json{{"role", "user"},   {"content", buildDetectUserPrompt(documentText, existingFields)}},

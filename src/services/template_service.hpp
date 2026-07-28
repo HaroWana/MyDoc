@@ -53,7 +53,7 @@ public:
 
 private:
     mondoc::domain::ITemplateRepository& repo_;
-    std::filesystem::path dataDir_;
+    std::filesystem::path data_dir_;
 };
 
 }  // namespace mondoc::services

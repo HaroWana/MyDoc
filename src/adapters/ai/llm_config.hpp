@@ -7,12 +7,12 @@
 namespace mondoc::adapters::ai {
 
 struct LlmConfig {
-    std::string api_url;
-    std::string api_key;
-    std::string model;
+    std::string api_url_;
+    std::string api_key_;
+    std::string model_;
 
     bool isConfigured() const noexcept {
-        return !api_url.empty() && !api_key.empty();
+        return !api_url_.empty() && !api_key_.empty();
     }
 
     // Returns a default-constructed (unconfigured) LlmConfig when the file
