@@ -118,3 +118,34 @@ TEST_CASE("SqliteConnection: opens a unicode path", "[storage]") {
 
     std::filesystem::remove(path, ec);
 }
+
+TEST_CASE("runMigrations v7: legacy origin tokens are normalized", "[storage]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    auto& db = conn->raw();
+
+    for (const auto& m : registeredMigrations()) {
+        if (m.version > 6) break;
+        db.exec(std::string{m.sql});
+    }
+    db.exec("PRAGMA user_version = 6;");
+    db.exec("INSERT INTO templates(id,name,source_format,schema_json,blob_path,blob_hash,"
+            "created_at,updated_at,version) VALUES('t1','T','docx','[]','','',0,0,1)");
+    db.exec("INSERT INTO template_fields(id,template_id,name,type,origin,order_idx)"
+            " VALUES('f1','t1','a','Text','FormControl',0)");
+    db.exec("INSERT INTO template_fields(id,template_id,name,type,origin,order_idx)"
+            " VALUES('f2','t1','b','Text','Placeholder',1)");
+    db.exec("INSERT INTO template_fields(id,template_id,name,type,origin,order_idx)"
+            " VALUES('f3','t1','c','Text','ai',2)");
+
+    auto result = runMigrations(*conn);
+    REQUIRE(result.has_value());
+
+    SQLite::Statement q(db, "SELECT id, origin FROM template_fields ORDER BY order_idx");
+    REQUIRE(q.executeStep());
+    REQUIRE(q.getColumn(1).getString() == "form_control");
+    REQUIRE(q.executeStep());
+    REQUIRE(q.getColumn(1).getString() == "placeholder");
+    REQUIRE(q.executeStep());
+    REQUIRE(q.getColumn(1).getString() == "ai");
+}

@@ -51,8 +51,8 @@ mondoc::domain::FieldType stringToFieldType(const std::string& s) {
 std::string fieldOriginToString(mondoc::domain::FieldOrigin o) {
     using mondoc::domain::FieldOrigin;
     switch (o) {
-        case FieldOrigin::FormControl: return "FormControl";
-        case FieldOrigin::Placeholder: return "Placeholder";
+        case FieldOrigin::FormControl: return "form_control";
+        case FieldOrigin::Placeholder: return "placeholder";
         case FieldOrigin::Ai:          return "ai";
         case FieldOrigin::Unknown:     return "unknown";
     }
@@ -61,9 +61,9 @@ std::string fieldOriginToString(mondoc::domain::FieldOrigin o) {
 
 mondoc::domain::FieldOrigin stringToFieldOrigin(const std::string& s) {
     using mondoc::domain::FieldOrigin;
-    if (s == "FormControl") return FieldOrigin::FormControl;
-    if (s == "Placeholder") return FieldOrigin::Placeholder;
-    if (s == "ai")          return FieldOrigin::Ai;
+    if (s == "form_control") return FieldOrigin::FormControl;
+    if (s == "placeholder")  return FieldOrigin::Placeholder;
+    if (s == "ai")           return FieldOrigin::Ai;
     return FieldOrigin::Unknown;
 }
 

@@ -87,13 +87,19 @@ constexpr std::string_view kV6Sql = R"SQL(
 ALTER TABLE template_fields ADD COLUMN location_json TEXT;
 )SQL";
 
-constexpr std::array<Migration, 6> kMigrations{
+constexpr std::string_view kV7Sql = R"SQL(
+UPDATE template_fields SET origin = 'form_control' WHERE origin = 'FormControl';
+UPDATE template_fields SET origin = 'placeholder'  WHERE origin = 'Placeholder';
+)SQL";
+
+constexpr std::array<Migration, 7> kMigrations{
     Migration{1, kV1Sql},
     Migration{2, kV2Sql},
     Migration{3, kV3Sql},
     Migration{4, kV4Sql},
     Migration{5, kV5Sql},
     Migration{6, kV6Sql},
+    Migration{7, kV7Sql},
 };
 
 }  // namespace

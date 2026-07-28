@@ -308,3 +308,26 @@ TEST_CASE("SqliteTemplateRepository: FieldOrigin::Ai round-trips through storage
     REQUIRE(loaded->fields_.size() == 1);
     REQUIRE(loaded->fields_[0].origin_ == mondoc::domain::FieldOrigin::Ai);
 }
+
+TEST_CASE("SqliteTemplateRepository: origins persist as snake tokens",
+          "[storage.template_repo]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    REQUIRE(runMigrations(*conn).has_value());
+    SqliteTemplateRepository repo(*conn);
+
+    auto t = makeTemplate("tpl-origin", "Origins");
+    auto f = makeField("fld-origin", "x");
+    f.origin_ = mondoc::domain::FieldOrigin::FormControl;
+    t.fields_.push_back(std::move(f));
+    REQUIRE(repo.save(t).has_value());
+
+    SQLite::Statement q(conn->raw(),
+        "SELECT origin FROM template_fields WHERE id = 'fld-origin'");
+    REQUIRE(q.executeStep());
+    REQUIRE(q.getColumn(0).getString() == "form_control");
+
+    auto back = repo.findById(mondoc::TemplateId{"tpl-origin"});
+    REQUIRE(back.has_value());
+    REQUIRE(back->fields_.at(0).origin_ == mondoc::domain::FieldOrigin::FormControl);
+}
