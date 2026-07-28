@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "domain/ai_input.hpp"
 #include "domain/fill_session.hpp"
 #include "domain/i_fill_session_repository.hpp"
 #include "domain/i_template_repository.hpp"
@@ -20,20 +21,6 @@ namespace mondoc::adapters::ai { class AiFillPipeline; }
 namespace mondoc::services {
 
 enum class ExportFormat { Docx, Pdf, Text, Odt };
-
-struct AiFillSourceInput {
-    mondoc::SourceDocId id_;
-    std::string title_;
-    std::string text_;
-};
-
-struct AiExtractedFact {
-    std::size_t source_index_ = 0;
-    std::int64_t char_start_  = 0;
-    std::int64_t char_end_    = 0;
-    std::string excerpt_;
-    std::string summary_;
-};
 
 enum class AiFailureKind { Cancelled, Unreachable, RateLimited, BadResponse };
 
@@ -64,15 +51,15 @@ public:
 
     mondoc::expected<std::vector<mondoc::domain::Fill>, mondoc::Error>
     aiFill(const mondoc::FillSessionId& sessionId,
-           const std::vector<AiFillSourceInput>& sources,
+           const std::vector<mondoc::domain::AiSourceDoc>& sources,
            const std::string& freeFormText,
            const std::atomic<bool>& cancelled);
 
     mondoc::expected<std::vector<mondoc::domain::Fill>, mondoc::Error>
     refineField(const mondoc::FillSessionId& sessionId,
                 const std::string& userMessage,
-                const std::vector<AiFillSourceInput>& sources,
-                const std::vector<AiExtractedFact>& lastPass1Facts,
+                const std::vector<mondoc::domain::AiSourceDoc>& sources,
+                const std::vector<mondoc::domain::AiExtractedFact>& lastPass1Facts,
                 const std::atomic<bool>& cancelled);
 
     mondoc::expected<std::vector<mondoc::domain::FillSession>, mondoc::Error>

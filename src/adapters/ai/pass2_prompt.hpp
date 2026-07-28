@@ -33,7 +33,7 @@ inline std::string fieldTypeToLabel(mondoc::domain::FieldType t) {
 // evidence facts using this exact format so the LLM sees identical framing
 // whether it's assigning a fact to a field (Pass 2) or reconsidering a
 // previously assigned value (refine).
-inline std::string buildFactsSection(const std::vector<ExtractedFact>& facts) {
+inline std::string buildFactsSection(const std::vector<AiExtractedFact>& facts) {
     std::string out = "\nExtracted facts (with fact_index):\n";
     for (std::size_t i = 0; i < facts.size(); ++i) {
         out += "[" + std::to_string(i) + "] source_index=";
@@ -48,7 +48,7 @@ inline std::string buildFactsSection(const std::vector<ExtractedFact>& facts) {
 }
 
 inline std::string buildPass2UserPrompt(const mondoc::domain::Template& tpl,
-                                        const std::vector<ExtractedFact>& facts) {
+                                        const std::vector<AiExtractedFact>& facts) {
     std::string out = "Template fields:\n";
     for (const auto& f : tpl.fields_) {
         out += "- field_id=\"";

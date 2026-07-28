@@ -26,26 +26,6 @@ mondoc::Error llmErrorToError(const mondoc::adapters::ai::LlmError& e) {
     return mondoc::Error::generic("ai unknown error");
 }
 
-std::vector<mondoc::adapters::ai::AiFillSourceDoc>
-translateSources(const std::vector<mondoc::services::AiFillSourceInput>& in) {
-    std::vector<mondoc::adapters::ai::AiFillSourceDoc> out;
-    out.reserve(in.size());
-    for (const auto& s : in) {
-        out.push_back({s.id_, s.title_, s.text_});
-    }
-    return out;
-}
-
-std::vector<mondoc::adapters::ai::ExtractedFact>
-translateFacts(const std::vector<mondoc::services::AiExtractedFact>& in) {
-    std::vector<mondoc::adapters::ai::ExtractedFact> out;
-    out.reserve(in.size());
-    for (const auto& f : in) {
-        out.push_back({f.source_index_, f.char_start_, f.char_end_, f.excerpt_, f.summary_});
-    }
-    return out;
-}
-
 }  // namespace
 
 FillSessionService::FillSessionService(
@@ -83,7 +63,7 @@ FillSessionService::setFieldValue(const mondoc::FillSessionId& sessionId,
 
 mondoc::expected<std::vector<mondoc::domain::Fill>, mondoc::Error>
 FillSessionService::aiFill(const mondoc::FillSessionId& sessionId,
-                           const std::vector<AiFillSourceInput>& sources,
+                           const std::vector<mondoc::domain::AiSourceDoc>& sources,
                            const std::string& freeFormText,
                            const std::atomic<bool>& cancelled) {
     if (!aiPipeline_) {
@@ -98,7 +78,7 @@ FillSessionService::aiFill(const mondoc::FillSessionId& sessionId,
     mondoc::adapters::ai::RunInput runInput;
     runInput.tpl_           = &(*tplRes);
     runInput.free_form_text_ = freeFormText;
-    runInput.sources_       = translateSources(sources);
+    runInput.sources_       = sources;
 
     auto pipeResult = aiPipeline_->run(runInput, cancelled);
     if (!pipeResult) {
@@ -144,8 +124,8 @@ mondoc::expected<std::vector<mondoc::domain::Fill>, mondoc::Error>
 FillSessionService::refineField(
         const mondoc::FillSessionId& sessionId,
         const std::string& userMessage,
-        const std::vector<AiFillSourceInput>& sources,
-        const std::vector<AiExtractedFact>& lastPass1Facts,
+        const std::vector<mondoc::domain::AiSourceDoc>& sources,
+        const std::vector<mondoc::domain::AiExtractedFact>& lastPass1Facts,
         const std::atomic<bool>& cancelled) {
     if (!aiPipeline_) {
         return mondoc::unexpected(
@@ -158,9 +138,9 @@ FillSessionService::refineField(
 
     mondoc::adapters::ai::RefineInput refineInput;
     refineInput.tpl_              = &(*tplRes);
-    refineInput.sources_          = translateSources(sources);
+    refineInput.sources_          = sources;
     refineInput.current_fills_    = sessionRes->fills_;
-    refineInput.last_pass1_facts_ = translateFacts(lastPass1Facts);
+    refineInput.last_pass1_facts_ = lastPass1Facts;
     refineInput.user_message_     = userMessage;
 
     auto pipeResult = aiPipeline_->refine(refineInput, &cancelled);

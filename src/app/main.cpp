@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
     QApplication::setStyle(QStringLiteral("fusion"));
 
     qRegisterMetaType<std::vector<mondoc::domain::Fill>>();
-    qRegisterMetaType<std::vector<mondoc::services::AiExtractedFact>>();
+    qRegisterMetaType<std::vector<mondoc::domain::AiExtractedFact>>();
     qRegisterMetaType<std::vector<mondoc::domain::Field>>();
     qRegisterMetaType<std::vector<mondoc::adapters::ai::FieldImprovement>>();
 

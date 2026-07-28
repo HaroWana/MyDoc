@@ -57,7 +57,7 @@ ChatPane::ChatPane(QWidget* parent) : QWidget(parent) {
     });
 }
 
-void ChatPane::setLastPass1Facts(std::vector<mondoc::services::AiExtractedFact> facts) {
+void ChatPane::setLastPass1Facts(std::vector<mondoc::domain::AiExtractedFact> facts) {
     lastPass1Facts_ = std::move(facts);
 }
 

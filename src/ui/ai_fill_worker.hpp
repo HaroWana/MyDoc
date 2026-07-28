@@ -18,7 +18,7 @@ class AiFillWorker : public QObject {
 public:
     AiFillWorker(mondoc::services::FillSessionService& service,
                  mondoc::FillSessionId sessionId,
-                 std::vector<mondoc::services::AiFillSourceInput> sources,
+                 std::vector<mondoc::domain::AiSourceDoc> sources,
                  std::string freeFormText,
                  QObject* parent = nullptr);
 
@@ -35,7 +35,7 @@ signals:
 private:
     mondoc::services::FillSessionService& service_;
     mondoc::FillSessionId sessionId_;
-    std::vector<mondoc::services::AiFillSourceInput> sources_;
+    std::vector<mondoc::domain::AiSourceDoc> sources_;
     std::string freeFormText_;
     std::atomic<bool> cancelled_{false};
 };

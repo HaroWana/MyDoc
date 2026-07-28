@@ -12,14 +12,14 @@
 namespace {
 
 using mondoc::adapters::ai::AiFillPipeline;
-using mondoc::adapters::ai::AiFillSourceDoc;
+using mondoc::adapters::ai::AiSourceDoc;
 using mondoc::tests_support::makeChatCompletion;
 
 constexpr const char* kFixture =
     "The patient John Doe was born on 1985-03-12 in Berlin.";
 
-std::vector<AiFillSourceDoc> oneSource() {
-    return {AiFillSourceDoc{mondoc::SourceDocId{"src-0"}, "report.txt", kFixture}};
+std::vector<AiSourceDoc> oneSource() {
+    return {AiSourceDoc{mondoc::SourceDocId{"src-0"}, "report.txt", kFixture}};
 }
 
 }  // namespace

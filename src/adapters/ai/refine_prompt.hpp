@@ -19,9 +19,9 @@ inline constexpr std::string_view kRefineSystemPrompt =
 
 inline std::string buildRefineUserPrompt(
         const mondoc::domain::Template& tpl,
-        const std::vector<AiFillSourceDoc>& sources,
+        const std::vector<AiSourceDoc>& sources,
         const std::vector<mondoc::domain::Fill>& currentFills,
-        const std::vector<ExtractedFact>& lastPass1Facts,
+        const std::vector<AiExtractedFact>& lastPass1Facts,
         const std::string& userMessage) {
     std::string out = "Current field values:\n";
     for (const auto& f : tpl.fields_) {

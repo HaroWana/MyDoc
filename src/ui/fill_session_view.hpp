@@ -55,7 +55,7 @@ private slots:
     void onAiFailed(QString message, int errorKind);
     void onAiCancelled();
     void onChatRefinementRequested(QString prompt,
-                                   std::vector<mondoc::services::AiExtractedFact> lastFacts);
+                                   std::vector<mondoc::domain::AiExtractedFact> lastFacts);
     void onChatRefineFinished(std::vector<mondoc::domain::Fill> fills);
     void onChatRefineFailed(QString message);
 
@@ -66,7 +66,7 @@ private:
     void updateAiControlsVisibility();
     void capturePreFillSnapshot();
     void restorePreFillSnapshot();
-    std::vector<mondoc::services::AiFillSourceInput> currentSources() const;
+    std::vector<mondoc::domain::AiSourceDoc> currentSources() const;
     void showAiErrorDialog(const mondoc::Error& error);
     void shutdownThread(QThread*& t, AiFillWorker*& worker, bool mustJoin);
     void shutdownThread(QThread*& t, AiRefineWorker*& worker, bool mustJoin);

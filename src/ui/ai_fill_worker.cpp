@@ -8,7 +8,7 @@ namespace mondoc::ui {
 
 AiFillWorker::AiFillWorker(mondoc::services::FillSessionService& service,
                            mondoc::FillSessionId sessionId,
-                           std::vector<mondoc::services::AiFillSourceInput> sources,
+                           std::vector<mondoc::domain::AiSourceDoc> sources,
                            std::string freeFormText,
                            QObject* parent)
     : QObject(parent),

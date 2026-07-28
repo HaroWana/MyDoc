@@ -9,8 +9,8 @@ namespace mondoc::ui {
 AiRefineWorker::AiRefineWorker(mondoc::services::FillSessionService& service,
                                mondoc::FillSessionId sessionId,
                                std::string userMessage,
-                               std::vector<mondoc::services::AiFillSourceInput> sources,
-                               std::vector<mondoc::services::AiExtractedFact> lastPass1Facts,
+                               std::vector<mondoc::domain::AiSourceDoc> sources,
+                               std::vector<mondoc::domain::AiExtractedFact> lastPass1Facts,
                                QObject* parent)
     : QObject(parent),
       service_(service),

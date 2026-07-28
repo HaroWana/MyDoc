@@ -13,7 +13,7 @@ inline constexpr std::string_view kPass1SystemPrompt =
     "short summary. Do NOT paraphrase the excerpt — copy it byte-for-byte. "
     "Return only JSON matching the supplied schema.";
 
-inline std::string buildPass1UserPrompt(const std::vector<AiFillSourceDoc>& sources,
+inline std::string buildPass1UserPrompt(const std::vector<AiSourceDoc>& sources,
                                         const std::string& freeFormText) {
     std::string out = "Source documents:\n";
     for (std::size_t i = 0; i < sources.size(); ++i) {

@@ -20,7 +20,7 @@
 namespace {
 
 using mondoc::adapters::ai::AiFillPipeline;
-using mondoc::adapters::ai::AiFillSourceDoc;
+using mondoc::adapters::ai::AiSourceDoc;
 using mondoc::adapters::ai::LlmConfig;
 using mondoc::adapters::ai::LlmError;
 using mondoc::adapters::ai::RefineInput;
@@ -48,8 +48,8 @@ Template threeFieldTemplate() {
     return tpl;
 }
 
-std::vector<AiFillSourceDoc> oneSource() {
-    return {AiFillSourceDoc{SourceDocId{"src-0"}, "report.txt",
+std::vector<AiSourceDoc> oneSource() {
+    return {AiSourceDoc{SourceDocId{"src-0"}, "report.txt",
                             "John Doe born 1985-03-12 scored 95"}};
 }
 

@@ -19,8 +19,8 @@ public:
     AiRefineWorker(mondoc::services::FillSessionService& service,
                    mondoc::FillSessionId sessionId,
                    std::string userMessage,
-                   std::vector<mondoc::services::AiFillSourceInput> sources,
-                   std::vector<mondoc::services::AiExtractedFact> lastPass1Facts,
+                   std::vector<mondoc::domain::AiSourceDoc> sources,
+                   std::vector<mondoc::domain::AiExtractedFact> lastPass1Facts,
                    QObject* parent = nullptr);
 
     void requestCancel() noexcept;
@@ -37,8 +37,8 @@ private:
     mondoc::services::FillSessionService& service_;
     mondoc::FillSessionId sessionId_;
     std::string userMessage_;
-    std::vector<mondoc::services::AiFillSourceInput> sources_;
-    std::vector<mondoc::services::AiExtractedFact> lastPass1Facts_;
+    std::vector<mondoc::domain::AiSourceDoc> sources_;
+    std::vector<mondoc::domain::AiExtractedFact> lastPass1Facts_;
     std::atomic<bool> cancelled_{false};
 };
 

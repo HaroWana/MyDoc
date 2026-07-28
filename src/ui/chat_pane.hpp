@@ -18,7 +18,7 @@ class ChatPane : public QWidget {
 public:
     explicit ChatPane(QWidget* parent = nullptr);
 
-    void setLastPass1Facts(std::vector<mondoc::services::AiExtractedFact> facts);
+    void setLastPass1Facts(std::vector<mondoc::domain::AiExtractedFact> facts);
     void appendUserMessage(const QString& text);
     void appendAiMessage(const QString& text);
     void appendSystemMessage(const QString& text);
@@ -29,7 +29,7 @@ public:
 
 signals:
     void refinementRequested(QString prompt,
-                             std::vector<mondoc::services::AiExtractedFact> lastFacts);
+                             std::vector<mondoc::domain::AiExtractedFact> lastFacts);
 
 private slots:
     void onSendClicked();
@@ -40,10 +40,10 @@ private:
     QPlainTextEdit* history_ = nullptr;
     QLineEdit* input_ = nullptr;
     QPushButton* sendBtn_ = nullptr;
-    std::vector<mondoc::services::AiExtractedFact> lastPass1Facts_;
+    std::vector<mondoc::domain::AiExtractedFact> lastPass1Facts_;
     bool busy_ = false;
 };
 
 }  // namespace mondoc::ui
 
-Q_DECLARE_METATYPE(std::vector<mondoc::services::AiExtractedFact>)
+Q_DECLARE_METATYPE(std::vector<mondoc::domain::AiExtractedFact>)

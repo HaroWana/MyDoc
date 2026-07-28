@@ -357,12 +357,12 @@ void FillSessionView::restorePreFillSnapshot() {
     preFillSnapshot_.clear();
 }
 
-std::vector<mondoc::services::AiFillSourceInput>
+std::vector<mondoc::domain::AiSourceDoc>
 FillSessionView::currentSources() const {
-    std::vector<mondoc::services::AiFillSourceInput> out;
+    std::vector<mondoc::domain::AiSourceDoc> out;
     out.reserve(sourceTexts_.size());
     for (std::size_t i = 0; i < sourceTexts_.size(); ++i) {
-        mondoc::services::AiFillSourceInput in;
+        mondoc::domain::AiSourceDoc in;
         in.id_    = sourceTexts_[i].first;
         in.title_ = sourceTitles_[i].second.toStdString();
         in.text_  = sourceTexts_[i].second.toStdString();
@@ -457,7 +457,7 @@ void FillSessionView::onAiFinished(std::vector<mondoc::domain::Fill> fills) {
 
     fieldPane_->populateAi(fills);
 
-    std::vector<mondoc::services::AiExtractedFact> facts;
+    std::vector<mondoc::domain::AiExtractedFact> facts;
     for (const auto& f : fills) {
         for (const auto& ref : f.source_refs_) {
             int sourceIndex = 0;
@@ -467,7 +467,7 @@ void FillSessionView::onAiFinished(std::vector<mondoc::domain::Fill> fills) {
                     break;
                 }
             }
-            mondoc::services::AiExtractedFact e;
+            mondoc::domain::AiExtractedFact e;
             e.source_index_ = sourceIndex;
             e.char_start_   = ref.range_.begin_;
             e.char_end_     = ref.range_.end_;
@@ -511,7 +511,7 @@ void FillSessionView::onAiCancelled() {
 }
 
 void FillSessionView::onChatRefinementRequested(
-        QString prompt, std::vector<mondoc::services::AiExtractedFact> lastFacts) {
+        QString prompt, std::vector<mondoc::domain::AiExtractedFact> lastFacts) {
     if (!service_.isAiConfigured()) {
         if (chatPane_) {
             chatPane_->appendSystemMessage(tr("AI not configured."));

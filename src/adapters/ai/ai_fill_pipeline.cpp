@@ -74,10 +74,10 @@ std::string AiFillPipeline::normalizeNumberValue(const std::string& v) {
     return out.empty() ? v : out;
 }
 
-std::vector<ExtractedFact>
+std::vector<AiExtractedFact>
 AiFillPipeline::validatePass1Facts(const std::string& jsonContent,
-                                   const std::vector<AiFillSourceDoc>& sources) {
-    std::vector<ExtractedFact> accepted;
+                                   const std::vector<AiSourceDoc>& sources) {
+    std::vector<AiExtractedFact> accepted;
     auto contentOrErr = detail::parseChatCompletionContent(jsonContent);
     if (!contentOrErr) return accepted;
     const auto& inner = *contentOrErr;
@@ -122,7 +122,7 @@ AiFillPipeline::validatePass1Facts(const std::string& jsonContent,
                 end   = static_cast<std::int64_t>(pos + excerpt.size());
             }
 
-            ExtractedFact f;
+            AiExtractedFact f;
             f.source_index_ = static_cast<std::size_t>(source_index);
             f.char_start_   = start;
             f.char_end_     = end;

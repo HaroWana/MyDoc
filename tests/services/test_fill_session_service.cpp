@@ -48,9 +48,9 @@ using mondoc::domain::Template;
 using mondoc::adapters::ai::AiFillPipeline;
 using mondoc::adapters::ai::LlmConfig;
 using mondoc::adapters::ai::LlmError;
-using mondoc::services::AiExtractedFact;
+using mondoc::domain::AiExtractedFact;
 using mondoc::services::AiFailureKind;
-using mondoc::services::AiFillSourceInput;
+using mondoc::domain::AiSourceDoc;
 using mondoc::services::classifyAiFailure;
 using mondoc::services::ExportFormat;
 using mondoc::services::FillSessionService;
@@ -757,8 +757,8 @@ TEST_CASE("[TST-18] FillSessionService::aiFill: non-empty source text and free-f
     AiFillPipeline pipe{fake, minimalConfig()};
     FillSessionService svc{fillRepo, tplRepo, &pipe};
 
-    std::vector<AiFillSourceInput> sources{
-        AiFillSourceInput{mondoc::SourceDocId{"src-a"}, "report.txt", "SOURCE_TEXT_MARKER"},
+    std::vector<AiSourceDoc> sources{
+        AiSourceDoc{mondoc::SourceDocId{"src-a"}, "report.txt", "SOURCE_TEXT_MARKER"},
     };
     std::atomic<bool> cancelled{false};
     auto r = svc.aiFill(FillSessionId{"s1"}, sources, "FREE_FORM_TEXT_MARKER", cancelled);
