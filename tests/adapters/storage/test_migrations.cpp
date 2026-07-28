@@ -6,7 +6,9 @@
 #include "sqlite_connection.hpp"
 #include "migrations.hpp"
 
+#include <algorithm>
 #include <filesystem>
+#include <vector>
 #include <string>
 
 using namespace mondoc::adapters::storage;
@@ -148,4 +150,32 @@ TEST_CASE("runMigrations v7: legacy origin tokens are normalized", "[storage]") 
     REQUIRE(q.getColumn(1).getString() == "placeholder");
     REQUIRE(q.executeStep());
     REQUIRE(q.getColumn(1).getString() == "ai");
+}
+
+TEST_CASE("runMigrations v8: dead template columns dropped, data survives", "[storage]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    auto& db = conn->raw();
+
+    for (const auto& m : registeredMigrations()) {
+        if (m.version > 7) break;
+        db.exec(std::string{m.sql});
+    }
+    db.exec("PRAGMA user_version = 7;");
+    db.exec("INSERT INTO templates(id,name,source_format,schema_json,blob_path,blob_hash,"
+            "created_at,updated_at,version) VALUES('t1','Keep','docx','[]','/p','h',1,2,1)");
+
+    REQUIRE(runMigrations(*conn).has_value());
+
+    std::vector<std::string> cols;
+    SQLite::Statement info(db, "PRAGMA table_info(templates);");
+    while (info.executeStep()) cols.push_back(info.getColumn(1).getString());
+    REQUIRE(std::find(cols.begin(), cols.end(), "schema_json") == cols.end());
+    REQUIRE(std::find(cols.begin(), cols.end(), "blob_hash") == cols.end());
+    REQUIRE(std::find(cols.begin(), cols.end(), "version") == cols.end());
+
+    SQLite::Statement q(db, "SELECT name, blob_path FROM templates WHERE id='t1'");
+    REQUIRE(q.executeStep());
+    REQUIRE(q.getColumn(0).getString() == "Keep");
+    REQUIRE(q.getColumn(1).getString() == "/p");
 }

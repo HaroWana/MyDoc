@@ -34,9 +34,9 @@ mondoc::expected<SqliteConnection, mondoc::Error> openMigratedDb() {
     if (!migr) return mondoc::unexpected(migr.error());
     auto& db = conn->raw();
     SQLite::Statement t(db,
-        "INSERT INTO templates(id, name, source_format, schema_json, blob_path,"
-        " blob_hash, created_at, updated_at, version)"
-        " VALUES('tpl1','Test','txt','[]','','',0,0,1)");
+        "INSERT INTO templates(id, name, source_format, blob_path,"
+        " created_at, updated_at)"
+        " VALUES('tpl1','Test','txt','',0,0)");
     t.exec();
     return conn;
 }

@@ -92,7 +92,13 @@ UPDATE template_fields SET origin = 'form_control' WHERE origin = 'FormControl';
 UPDATE template_fields SET origin = 'placeholder'  WHERE origin = 'Placeholder';
 )SQL";
 
-constexpr std::array<Migration, 7> kMigrations{
+constexpr std::string_view kV8Sql = R"SQL(
+ALTER TABLE templates DROP COLUMN schema_json;
+ALTER TABLE templates DROP COLUMN blob_hash;
+ALTER TABLE templates DROP COLUMN version;
+)SQL";
+
+constexpr std::array<Migration, 8> kMigrations{
     Migration{1, kV1Sql},
     Migration{2, kV2Sql},
     Migration{3, kV3Sql},
@@ -100,6 +106,7 @@ constexpr std::array<Migration, 7> kMigrations{
     Migration{5, kV5Sql},
     Migration{6, kV6Sql},
     Migration{7, kV7Sql},
+    Migration{8, kV8Sql},
 };
 
 }  // namespace

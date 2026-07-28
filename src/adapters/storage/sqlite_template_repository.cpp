@@ -128,26 +128,19 @@ SqliteTemplateRepository::save(const mondoc::domain::Template& t) {
 
         SQLite::Statement upsert(db,
             "INSERT INTO templates"
-            "(id, name, source_format, schema_json, blob_path, blob_hash,"
-            " created_at, updated_at, version)"
-            " VALUES(?,?,?,?,?,?,?,?,?)"
+            "(id, name, source_format, blob_path, created_at, updated_at)"
+            " VALUES(?,?,?,?,?,?)"
             " ON CONFLICT(id) DO UPDATE SET"
             "  name=excluded.name,"
             "  source_format=excluded.source_format,"
-            "  schema_json=excluded.schema_json,"
             "  blob_path=excluded.blob_path,"
-            "  blob_hash=excluded.blob_hash,"
-            "  updated_at=excluded.updated_at,"
-            "  version=excluded.version");
+            "  updated_at=excluded.updated_at");
         upsert.bind(1, t.id_.value());
         upsert.bind(2, t.name_);
         upsert.bind(3, t.source_format_);
-        upsert.bind(4, std::string{"[]"});
-        upsert.bind(5, pathToUtf8(t.source_path_));
-        upsert.bind(6, std::string{""});
-        upsert.bind(7, now);
-        upsert.bind(8, now);
-        upsert.bind(9, 1);
+        upsert.bind(4, pathToUtf8(t.source_path_));
+        upsert.bind(5, now);
+        upsert.bind(6, now);
         upsert.exec();
 
         SQLite::Statement clearFields(db,
