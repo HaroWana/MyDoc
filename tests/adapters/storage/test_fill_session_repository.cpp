@@ -504,3 +504,32 @@ TEST_CASE("[TST-12] SqliteFillSessionRepository: save fails with a storage error
     auto result = repo.save(s);
     REQUIRE_FALSE(result.has_value());
 }
+
+TEST_CASE("SqliteFillSessionRepository: listDrafts attaches values and refs to the right session",
+          "[storage.fill_session_repo]") {
+    auto conn = openMigratedDb();
+    REQUIRE(conn.has_value());
+    SqliteFillSessionRepository repo(*conn);
+
+    for (const char* sid : {"s1", "s2"}) {
+        auto s = makeSession(sid);
+        Fill f;
+        f.field_id_      = FieldId{"f1"};
+        f.current_value_ = std::string{sid} + "-val";
+        f.source_refs_.push_back(SourceRef{SourceDocId{"src"}, TextRange{0, 3},
+                                           std::string{sid} + "-excerpt"});
+        s.fills_.push_back(std::move(f));
+        REQUIRE(repo.save(s).has_value());
+    }
+
+    auto drafts = repo.listDrafts();
+    REQUIRE(drafts.has_value());
+    REQUIRE(drafts->size() == 2);
+    for (const auto& sess : *drafts) {
+        const std::string sid = sess.id_.value();
+        REQUIRE(sess.fills_.size() == 1);
+        REQUIRE(sess.fills_[0].current_value_ == sid + "-val");
+        REQUIRE(sess.fills_[0].source_refs_.size() == 1);
+        REQUIRE(sess.fills_[0].source_refs_[0].excerpt_ == sid + "-excerpt");
+    }
+}

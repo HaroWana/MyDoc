@@ -331,3 +331,30 @@ TEST_CASE("SqliteTemplateRepository: origins persist as snake tokens",
     REQUIRE(back.has_value());
     REQUIRE(back->fields_.at(0).origin_ == mondoc::domain::FieldOrigin::FormControl);
 }
+
+TEST_CASE("SqliteTemplateRepository: listAll attaches fields to the right template",
+          "[storage.template_repo]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    REQUIRE(runMigrations(*conn).has_value());
+    SqliteTemplateRepository repo(*conn);
+
+    auto a = makeTemplate("ta", "A");
+    a.fields_.push_back(makeField("a1", "a_first"));
+    a.fields_.push_back(makeField("a2", "a_second"));
+    auto b = makeTemplate("tb", "B");
+    b.fields_.push_back(makeField("b1", "b_only"));
+    REQUIRE(repo.save(a).has_value());
+    REQUIRE(repo.save(b).has_value());
+
+    auto list = repo.listAll();
+    REQUIRE(list.has_value());
+    REQUIRE(list->size() == 2);
+    REQUIRE((*list)[0].name_ == "A");
+    REQUIRE((*list)[0].fields_.size() == 2);
+    REQUIRE((*list)[0].fields_[0].name_ == "a_first");
+    REQUIRE((*list)[0].fields_[1].name_ == "a_second");
+    REQUIRE((*list)[1].name_ == "B");
+    REQUIRE((*list)[1].fields_.size() == 1);
+    REQUIRE((*list)[1].fields_[0].name_ == "b_only");
+}

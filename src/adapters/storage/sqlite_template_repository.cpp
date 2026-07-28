@@ -9,10 +9,12 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -112,6 +114,21 @@ std::optional<mondoc::domain::FieldLocation> locationFromJson(const std::string&
     return std::nullopt;
 }
 
+// Columns: 0 id, 1 name, 2 type, 3 origin, 4 location_json. Queries that
+// group by template append template_id as the LAST column.
+mondoc::domain::Field fieldFromRow(SQLite::Statement& q) {
+    mondoc::domain::Field f;
+    f.id_     = mondoc::FieldId{q.getColumn(0).getString()};
+    f.name_   = q.getColumn(1).getString();
+    f.type_   = stringToFieldType(q.getColumn(2).getString());
+    f.origin_ = stringToFieldOrigin(q.getColumn(3).getString());
+    const std::string locStr = q.getColumn(4).isNull()
+        ? std::string{}
+        : q.getColumn(4).getString();
+    f.location_ = locationFromJson(locStr);
+    return f;
+}
+
 }  // namespace
 
 SqliteTemplateRepository::SqliteTemplateRepository(SqliteConnection& conn) noexcept
@@ -203,16 +220,7 @@ SqliteTemplateRepository::findById(const mondoc::TemplateId& id) {
             " WHERE template_id = ? ORDER BY order_idx ASC");
         qf.bind(1, id.value());
         while (qf.executeStep()) {
-            mondoc::domain::Field f;
-            f.id_     = mondoc::FieldId{qf.getColumn(0).getString()};
-            f.name_   = qf.getColumn(1).getString();
-            f.type_   = stringToFieldType(qf.getColumn(2).getString());
-            f.origin_ = stringToFieldOrigin(qf.getColumn(3).getString());
-            const std::string locStr = qf.getColumn(4).isNull()
-                ? std::string{}
-                : qf.getColumn(4).getString();
-            f.location_ = locationFromJson(locStr);
-            t.fields_.push_back(std::move(f));
+            t.fields_.push_back(fieldFromRow(qf));
         }
 
         return t;
@@ -244,25 +252,16 @@ SqliteTemplateRepository::listAll() {
             }
         }
 
+        std::unordered_map<std::string, std::size_t> indexById;
+        for (std::size_t i = 0; i < out.size(); ++i) indexById[ids[i]] = i;
+
         SQLite::Statement qf(db,
-            "SELECT id, name, type, origin, location_json FROM template_fields"
-            " WHERE template_id = ? ORDER BY order_idx ASC");
-        for (std::size_t i = 0; i < out.size(); ++i) {
-            qf.reset();
-            qf.clearBindings();
-            qf.bind(1, ids[i]);
-            while (qf.executeStep()) {
-                mondoc::domain::Field f;
-                f.id_     = mondoc::FieldId{qf.getColumn(0).getString()};
-                f.name_   = qf.getColumn(1).getString();
-                f.type_   = stringToFieldType(qf.getColumn(2).getString());
-                f.origin_ = stringToFieldOrigin(qf.getColumn(3).getString());
-                const std::string locStr = qf.getColumn(4).isNull()
-                    ? std::string{}
-                    : qf.getColumn(4).getString();
-                f.location_ = locationFromJson(locStr);
-                out[i].fields_.push_back(std::move(f));
-            }
+            "SELECT id, name, type, origin, location_json, template_id"
+            " FROM template_fields ORDER BY template_id, order_idx ASC");
+        while (qf.executeStep()) {
+            auto it = indexById.find(qf.getColumn(5).getString());
+            if (it == indexById.end()) continue;
+            out[it->second].fields_.push_back(fieldFromRow(qf));
         }
 
         return out;

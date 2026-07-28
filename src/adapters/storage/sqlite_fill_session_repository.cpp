@@ -7,9 +7,11 @@
 #include <SQLiteCpp/Statement.h>
 #include <SQLiteCpp/Transaction.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -57,6 +59,27 @@ mondoc::domain::Confidence stringToConfidence(const std::string& s) {
     if (s == "medium") return Confidence::Medium;
     if (s == "low")    return Confidence::Low;
     return Confidence::Manual;
+}
+
+// Columns: 0 field_id, 1 value, 2 confidence. Queries that group by session
+// append session_id as the LAST column.
+mondoc::domain::Fill fillFromRow(SQLite::Statement& q) {
+    mondoc::domain::Fill f;
+    f.field_id_      = mondoc::FieldId{q.getColumn(0).getString()};
+    f.current_value_ = q.getColumn(1).getString();
+    f.confidence_    = stringToConfidence(q.getColumn(2).getString());
+    return f;
+}
+
+// Columns: 0 field_id (consumed by the caller for attachment), 1 source_id,
+// 2 char_start, 3 char_end, 4 excerpt.
+mondoc::domain::SourceRef refFromRow(SQLite::Statement& q) {
+    mondoc::domain::SourceRef r;
+    r.source_id_    = mondoc::SourceDocId{q.getColumn(1).getString()};
+    r.range_.begin_ = q.getColumn(2).getInt64();
+    r.range_.end_   = q.getColumn(3).getInt64();
+    r.excerpt_      = q.getColumn(4).getString();
+    return r;
 }
 
 }  // namespace
@@ -165,11 +188,7 @@ SqliteFillSessionRepository::findById(const mondoc::FillSessionId& id) {
             " WHERE session_id = ? ORDER BY field_id ASC");
         qv.bind(1, id.value());
         while (qv.executeStep()) {
-            mondoc::domain::Fill f;
-            f.field_id_      = mondoc::FieldId{qv.getColumn(0).getString()};
-            f.current_value_ = qv.getColumn(1).getString();
-            f.confidence_    = stringToConfidence(qv.getColumn(2).getString());
-            s.fills_.push_back(std::move(f));
+            s.fills_.push_back(fillFromRow(qv));
         }
 
         SQLite::Statement qr(db,
@@ -179,14 +198,9 @@ SqliteFillSessionRepository::findById(const mondoc::FillSessionId& id) {
         qr.bind(1, id.value());
         while (qr.executeStep()) {
             mondoc::FieldId fid{qr.getColumn(0).getString()};
-            mondoc::domain::SourceRef r;
-            r.source_id_   = mondoc::SourceDocId{qr.getColumn(1).getString()};
-            r.range_.begin_ = qr.getColumn(2).getInt64();
-            r.range_.end_   = qr.getColumn(3).getInt64();
-            r.excerpt_      = qr.getColumn(4).getString();
             for (auto& f : s.fills_) {
                 if (f.field_id_ == fid) {
-                    f.source_refs_.push_back(std::move(r));
+                    f.source_refs_.push_back(refFromRow(qr));
                     break;
                 }
             }
@@ -223,40 +237,33 @@ SqliteFillSessionRepository::listDrafts() {
             }
         }
 
-        SQLite::Statement qv(db,
-            "SELECT field_id, value, confidence FROM fill_values"
-            " WHERE session_id = ? ORDER BY field_id ASC");
-        SQLite::Statement qr(db,
-            "SELECT field_id, source_id, char_start, char_end, excerpt"
-            " FROM fill_source_refs WHERE session_id = ?"
-            " ORDER BY field_id, ref_order");
-        for (std::size_t i = 0; i < out.size(); ++i) {
-            qv.reset();
-            qv.clearBindings();
-            qv.bind(1, ids[i]);
-            while (qv.executeStep()) {
-                mondoc::domain::Fill f;
-                f.field_id_      = mondoc::FieldId{qv.getColumn(0).getString()};
-                f.current_value_ = qv.getColumn(1).getString();
-                f.confidence_    = stringToConfidence(qv.getColumn(2).getString());
-                out[i].fills_.push_back(std::move(f));
-            }
+        std::unordered_map<std::string, std::size_t> indexById;
+        for (std::size_t i = 0; i < out.size(); ++i) indexById[ids[i]] = i;
 
-            qr.reset();
-            qr.clearBindings();
-            qr.bind(1, ids[i]);
-            while (qr.executeStep()) {
-                mondoc::FieldId fid{qr.getColumn(0).getString()};
-                mondoc::domain::SourceRef r;
-                r.source_id_   = mondoc::SourceDocId{qr.getColumn(1).getString()};
-                r.range_.begin_ = qr.getColumn(2).getInt64();
-                r.range_.end_   = qr.getColumn(3).getInt64();
-                r.excerpt_      = qr.getColumn(4).getString();
-                for (auto& f : out[i].fills_) {
-                    if (f.field_id_ == fid) {
-                        f.source_refs_.push_back(std::move(r));
-                        break;
-                    }
+        SQLite::Statement qv(db,
+            "SELECT v.field_id, v.value, v.confidence, v.session_id"
+            " FROM fill_values v JOIN fill_sessions s ON s.id = v.session_id"
+            " WHERE s.status IN ('Created','Reviewing')"
+            " ORDER BY v.session_id, v.field_id ASC");
+        while (qv.executeStep()) {
+            auto it = indexById.find(qv.getColumn(3).getString());
+            if (it == indexById.end()) continue;
+            out[it->second].fills_.push_back(fillFromRow(qv));
+        }
+
+        SQLite::Statement qr(db,
+            "SELECT r.field_id, r.source_id, r.char_start, r.char_end, r.excerpt, r.session_id"
+            " FROM fill_source_refs r JOIN fill_sessions s ON s.id = r.session_id"
+            " WHERE s.status IN ('Created','Reviewing')"
+            " ORDER BY r.session_id, r.field_id, r.ref_order");
+        while (qr.executeStep()) {
+            auto it = indexById.find(qr.getColumn(5).getString());
+            if (it == indexById.end()) continue;
+            mondoc::FieldId fid{qr.getColumn(0).getString()};
+            for (auto& f : out[it->second].fills_) {
+                if (f.field_id_ == fid) {
+                    f.source_refs_.push_back(refFromRow(qr));
+                    break;
                 }
             }
         }
