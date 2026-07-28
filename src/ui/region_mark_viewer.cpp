@@ -166,6 +166,19 @@ RegionMarkViewer::RegionMarkViewer(const std::filesystem::path& sourcePath,
     scrollArea_->setWidgetResizable(false);
     scrollArea_->setContentsMargins(0, 0, 0, 0);
 
+    prevPageBtn_   = new QPushButton(tr("Previous Page"), this);
+    nextPageBtn_   = new QPushButton(tr("Next Page"), this);
+    pageIndicator_ = new QLabel(this);
+    prevPageBtn_->setAccessibleName(tr("Previous page"));
+    nextPageBtn_->setAccessibleName(tr("Next page"));
+    connect(prevPageBtn_, &QPushButton::clicked, this, [this]() {
+        if (pdfPageIndex_ > 0) renderPdfPage(pdfPageIndex_ - 1);
+    });
+    connect(nextPageBtn_, &QPushButton::clicked, this, [this]() {
+        if (pdfDoc_ && pdfPageIndex_ + 1 < pdfDoc_->pageCount())
+            renderPdfPage(pdfPageIndex_ + 1);
+    });
+
     const bool isPdf = mondoc::hasExtension(sourcePath_, ".pdf");
 
     if (isPdf) {
@@ -190,6 +203,17 @@ RegionMarkViewer::RegionMarkViewer(const std::filesystem::path& sourcePath,
         }
     }
 
+    const bool multiPage = isPdf && pdfDoc_ && pdfDoc_->pageCount() > 1;
+    prevPageBtn_->setVisible(multiPage);
+    nextPageBtn_->setVisible(multiPage);
+    pageIndicator_->setVisible(multiPage);
+
+    auto* pageRow = new QHBoxLayout;
+    pageRow->addWidget(prevPageBtn_);
+    pageRow->addWidget(pageIndicator_);
+    pageRow->addWidget(nextPageBtn_);
+    pageRow->addStretch(1);
+
     auto* btnRow = new QHBoxLayout;
     btnRow->addStretch(1);
     btnRow->addWidget(closeBtn_);
@@ -207,6 +231,7 @@ RegionMarkViewer::RegionMarkViewer(const std::filesystem::path& sourcePath,
     root->setContentsMargins(0, 8, 0, 8);
     root->setSpacing(8);
     root->addWidget(instructionLabel_);
+    root->addLayout(pageRow);
     root->addWidget(scrollArea_, 1);
     root->addLayout(subStepRow);
     root->addLayout(btnRow);
@@ -220,17 +245,30 @@ RegionMarkViewer::RegionMarkViewer(const std::filesystem::path& sourcePath,
 }
 
 bool RegionMarkViewer::loadPdf(const std::filesystem::path& path) {
-    auto* doc = new QPdfDocument(this);
+    pdfDoc_ = new QPdfDocument(this);
     const QString qpath = QString::fromStdU16String(path.u16string());
-    if (doc->load(qpath) != QPdfDocument::Error::None) return false;
-    if (doc->pageCount() == 0) return false;
-    const QSizeF pagePts = doc->pagePointSize(0);
+    if (pdfDoc_->load(qpath) != QPdfDocument::Error::None) return false;
+    if (pdfDoc_->pageCount() == 0) return false;
+    return renderPdfPage(0);
+}
+
+bool RegionMarkViewer::renderPdfPage(int pageIndex) {
+    const QSizeF pagePts = pdfDoc_->pagePointSize(pageIndex);
     if (pagePts.width() <= 0.0 || pagePts.height() <= 0.0) return false;
     const int w = 800;
     const int h = static_cast<int>(800.0 * pagePts.height() / pagePts.width());
-    const QImage img = doc->render(0, QSize(w, h));
+    const QImage img = pdfDoc_->render(pageIndex, QSize(w, h));
     if (img.isNull()) return false;
-    pdfWidget_->setImage(img, 0);
+    pdfPageIndex_ = pageIndex;
+    pdfWidget_->setImage(img, pageIndex);
+    // A drawn region belongs to the page it was drawn on.
+    regionDrawn_ = false;
+    pendingLocation_ = std::nullopt;
+    confirmRegionBtn_->setEnabled(false);
+    pageIndicator_->setText(tr("Page %1 of %2")
+        .arg(pageIndex + 1).arg(pdfDoc_->pageCount()));
+    prevPageBtn_->setEnabled(pageIndex > 0);
+    nextPageBtn_->setEnabled(pageIndex + 1 < pdfDoc_->pageCount());
     return true;
 }
 
@@ -281,10 +319,17 @@ void RegionMarkViewer::onConfirmRegion() {
     if (!pdfWidget_) {
         const QTextCursor cur = textBrowser_->textCursor();
         if (cur.hasSelection()) {
-            const QString before = textBrowser_->toPlainText().left(cur.selectionStart());
+            const QString full = textBrowser_->toPlainText();
+            const QString beforeStart = full.left(cur.selectionStart());
+            const QString beforeEnd   = full.left(cur.selectionEnd());
             mondoc::domain::TextLocation tl;
-            tl.char_offset = static_cast<int>(before.toUtf8().size());
-            tl.paragraph_index = static_cast<int>(before.count(QLatin1Char('\n')));
+            tl.char_offset     = static_cast<int>(beforeStart.toUtf8().size());
+            tl.char_end        = static_cast<int>(beforeEnd.toUtf8().size());
+            tl.paragraph_index = static_cast<int>(beforeStart.count(QLatin1Char('\n')));
+            QString sel = full.mid(cur.selectionStart(),
+                                   cur.selectionEnd() - cur.selectionStart());
+            if (sel.size() > 120) sel = sel.left(120);
+            tl.excerpt = sel.toStdString();
             pendingLocation_ = mondoc::domain::FieldLocation{std::nullopt, tl};
         } else {
             pendingLocation_ = std::nullopt;

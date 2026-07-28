@@ -9,6 +9,7 @@ class QLabel;
 class QPushButton;
 class QLineEdit;
 class QComboBox;
+class QPdfDocument;
 class QScrollArea;
 class QTextBrowser;
 
@@ -34,9 +35,12 @@ private slots:
 
 private:
     bool loadPdf(const std::filesystem::path& path);
+    bool renderPdfPage(int pageIndex);
     bool loadTextDocument(const std::filesystem::path& path);
 
     std::filesystem::path sourcePath_;
+    QPdfDocument* pdfDoc_ = nullptr;
+    int pdfPageIndex_ = 0;
     std::optional<mondoc::domain::FieldLocation> pendingLocation_;
     bool regionDrawn_ = false;
     mondoc::domain::Field field_;
@@ -54,6 +58,10 @@ private:
     QPushButton* confirmRegionBtn_;
     QPushButton* saveFieldBtn_;
     QPushButton* closeBtn_;
+
+    QPushButton* prevPageBtn_ = nullptr;
+    QPushButton* nextPageBtn_ = nullptr;
+    QLabel* pageIndicator_ = nullptr;
 };
 
 }  // namespace mondoc::ui
