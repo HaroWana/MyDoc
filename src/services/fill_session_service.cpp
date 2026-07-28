@@ -3,15 +3,13 @@
 #include "mondoc/util.hpp"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "ai_fill_pipeline.hpp"
-#include "docx_document_writer.hpp"
+#include "format_registry.hpp"
 #include "llm_error.hpp"
-#include "odt_document_writer.hpp"
-#include "pdf_document_writer.hpp"
 #include "plain_text_extractor.hpp"
-#include "text_document_writer.hpp"
 
 namespace mondoc::services {
 
@@ -233,30 +231,19 @@ FillSessionService::exportSession(const mondoc::FillSessionId& id,
     auto tpl = templateRepo_.findById(session->template_id_);
     if (!tpl) return mondoc::unexpected(tpl.error());
 
-    mondoc::expected<void, mondoc::Error> writeResult =
-        mondoc::unexpected(mondoc::Error::invalidArgument("unsupported format"));
+    std::string_view ext;
     switch (format) {
-        case ExportFormat::Docx: {
-            mondoc::adapters::formats::DocxDocumentWriter w;
-            writeResult = w.write(*tpl, session->fills_, destPath);
-            break;
-        }
-        case ExportFormat::Pdf: {
-            mondoc::adapters::formats::PdfDocumentWriter w;
-            writeResult = w.write(*tpl, session->fills_, destPath);
-            break;
-        }
-        case ExportFormat::Text: {
-            mondoc::adapters::formats::TextDocumentWriter w;
-            writeResult = w.write(*tpl, session->fills_, destPath);
-            break;
-        }
-        case ExportFormat::Odt: {
-            mondoc::adapters::formats::OdtDocumentWriter w;
-            writeResult = w.write(*tpl, session->fills_, destPath);
-            break;
-        }
+        case ExportFormat::Docx: ext = ".docx"; break;
+        case ExportFormat::Pdf:  ext = ".pdf";  break;
+        case ExportFormat::Text: ext = ".txt";  break;
+        case ExportFormat::Odt:  ext = ".odt";  break;
     }
+    auto writer = mondoc::adapters::formats::writerForExtension(ext);
+    if (!writer) {
+        return mondoc::unexpected(
+            mondoc::Error::invalidArgument("unsupported format"));
+    }
+    auto writeResult = writer->write(*tpl, session->fills_, destPath);
     if (!writeResult) return mondoc::unexpected(writeResult.error());
 
     session->status_ = mondoc::domain::FillStatus::Exported;

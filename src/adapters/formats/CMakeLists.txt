@@ -13,6 +13,7 @@ add_library(mondoc_adapters_formats STATIC
     mondoc_bundle_writer.cpp
     mondoc_bundle_reader.cpp
     plain_text_extractor.cpp
+    format_registry.cpp
     detail/zip_util.cpp
     detail/placeholders.cpp
     detail/odt_text.cpp

@@ -65,3 +65,8 @@ target_link_libraries(tests_adapters_formats_plain_text_extractor
     PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.plain_text_extractor COMMAND tests_adapters_formats_plain_text_extractor)
 set_tests_properties(formats.plain_text_extractor PROPERTIES LABELS phase04)
+
+add_executable(tests_adapters_formats_registry test_format_registry.cpp)
+target_link_libraries(tests_adapters_formats_registry
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
+add_test(NAME formats.registry COMMAND tests_adapters_formats_registry)

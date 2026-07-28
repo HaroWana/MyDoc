@@ -11,12 +11,9 @@
 #include <utility>
 
 #include "detail/zip_util.hpp"
-#include "docx_document_reader.hpp"
+#include "format_registry.hpp"
 #include "mondoc_bundle_reader.hpp"
 #include "mondoc_bundle_writer.hpp"
-#include "odt_document_reader.hpp"
-#include "pdf_document_reader.hpp"
-#include "plain_text_document_reader.hpp"
 #include "plain_text_extractor.hpp"
 
 namespace mondoc::services {
@@ -31,26 +28,12 @@ TemplateService::TemplateService(mondoc::domain::ITemplateRepository& repo,
 
 mondoc::expected<DraftWithText, mondoc::Error>
 TemplateService::extractDraft(const std::filesystem::path& path) {
-    const std::string ext = lowercaseExtension(path);
-    auto readDraft =
-        [&]() -> mondoc::expected<mondoc::domain::Template, mondoc::Error> {
-        if (ext == ".docx") {
-            return mondoc::adapters::formats::DocxDocumentReader{}.read(path);
-        }
-        if (ext == ".txt" || ext == ".md") {
-            return mondoc::adapters::formats::PlainTextDocumentReader{}.read(path);
-        }
-        if (ext == ".odt") {
-            return mondoc::adapters::formats::OdtDocumentReader{}.read(path);
-        }
-        if (ext == ".pdf") {
-            return mondoc::adapters::formats::PdfDocumentReader{}.read(path);
-        }
+    auto reader = mondoc::adapters::formats::readerForPath(path);
+    if (!reader) {
         return mondoc::unexpected(mondoc::Error::invalidArgument(
-            std::string{"Unsupported format: "} + ext));
-    };
-
-    auto draft = readDraft();
+            std::string{"Unsupported format: "} + lowercaseExtension(path)));
+    }
+    auto draft = reader->read(path);
     if (!draft) return mondoc::unexpected(draft.error());
 
     // Once the schema is in hand the template is registrable and manually
