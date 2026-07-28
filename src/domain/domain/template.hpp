@@ -13,6 +13,8 @@ struct Template {
     std::string source_format_;
     std::vector<Field> fields_;
     std::filesystem::path source_path_;
+    // Read-time diagnostics (e.g. hybrid-XFA notice). Transient: never persisted.
+    std::vector<std::string> warnings_;
 };
 
 }  // namespace mondoc::domain

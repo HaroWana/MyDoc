@@ -76,6 +76,30 @@ TEST_CASE("[TMPL-06][TST-3] PdfDocumentReader: extracts AcroForm TextBox field",
     REQUIRE(result->fields_[0].name_ == "customer_name");
     REQUIRE(result->fields_[0].type_ == mondoc::domain::FieldType::Text);
     REQUIRE(result->fields_[0].origin_ == mondoc::domain::FieldOrigin::FormControl);
+    REQUIRE(result->warnings_.empty());
+}
+
+TEST_CASE("PdfDocumentReader: hybrid XFA form yields fields plus a warning",
+          "[formats.pdf_reader][fmt-20]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    {
+        PoDoFo::PdfMemDocument doc;
+        auto& page = doc.GetPages().CreatePage(
+            PoDoFo::PdfPage::CreateStandardPageSize(PoDoFo::PdfPageSize::A4));
+        PoDoFo::Rect rect(50, 700, 200, 20);
+        page.CreateField<PoDoFo::PdfTextBox>("customer_name", rect);
+        doc.GetOrCreateAcroForm().GetDictionary().AddKey(
+            "XFA", PoDoFo::PdfString("dummy-xfa-stream"));
+        doc.Save(tmp.path.string());
+    }
+
+    PdfDocumentReader reader;
+    auto result = reader.read(tmp.path);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->fields_.size() == 1);
+    REQUIRE(result->warnings_.size() == 1);
+    REQUIRE(result->warnings_[0].find("XFA") != std::string::npos);
 }
 
 TEST_CASE("[TMPL-06][TST-3] PdfDocumentReader: rejects XFA-only PDF with actionable error",

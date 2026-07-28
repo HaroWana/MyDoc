@@ -102,6 +102,12 @@ PdfDocumentReader::read(const std::filesystem::path& path) {
         t.fields_        = std::move(fields);
         t.source_path_   = std::filesystem::absolute(path, ec);
         if (ec) t.source_path_ = path;
+        if (acroForm->GetDictionary().HasKey("XFA")) {
+            t.warnings_.push_back(
+                "This PDF contains a hybrid XFA form. MonDoc fills its standard "
+                "(AcroForm) fields, but viewers that render the XFA layer, such "
+                "as Adobe Acrobat, may not display the filled values.");
+        }
         return t;
 
     } catch (const PoDoFo::PdfError& e) {

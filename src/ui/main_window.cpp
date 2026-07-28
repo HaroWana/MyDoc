@@ -378,6 +378,10 @@ void MainWindow::triggerRegistration(const std::filesystem::path& path) {
         tr("%1 registered. %n field(s) found.", "",
            static_cast<int>(pendingTemplate_.fields_.size()))
             .arg(QString::fromStdString(pendingTemplate_.name_)));
+
+    for (const auto& warning : pendingTemplate_.warnings_) {
+        QMessageBox::warning(this, tr("MonDoc"), QString::fromStdString(warning));
+    }
 }
 
 void MainWindow::onSchemaSaved() {
