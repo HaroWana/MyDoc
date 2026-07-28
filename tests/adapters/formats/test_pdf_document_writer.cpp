@@ -112,22 +112,115 @@ TEST_CASE("PdfDocumentWriter: succeeds when template source_path_ is empty",
     REQUIRE(result.has_value());
 }
 
-TEST_CASE("PdfDocumentWriter: does not delete a pre-existing dest file on a pre-Save failure",
-          "[formats.pdf_writer]") {
+TEST_CASE("PdfDocumentWriter: CJK/emoji title exports with substituted glyphs",
+          "[formats.pdf_writer][fmt-19]") {
     TempFile tmp{uniqueTempPath(".pdf")};
-    const std::string preExistingContent = "pre-existing user file, not ours to touch";
-    writeFile(tmp.path, preExistingContent);
-
     Template tpl;
     tpl.id_ = TemplateId{"t1"};
-    // Standard14 Helvetica can't encode CJK/emoji glyphs: DrawText throws
-    // before document.Save() is ever reached.
     tpl.name_ = "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E \xF0\x9F\x98\x80"; // "日本語 😀"
     std::vector<Fill> fills{{FieldId{"f1"}, "x", {}}};
 
     auto result = PdfDocumentWriter{}.write(tpl, fills, tmp.path);
-    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.has_value());
+    REQUIRE(contains(extractAllText(tmp.path), "?"));
+}
 
-    REQUIRE(std::filesystem::exists(tmp.path));
-    REQUIRE(readFile(tmp.path) == preExistingContent);
+TEST_CASE("PdfDocumentWriter: unwritable dest path returns an error",
+          "[formats.pdf_writer]") {
+    Template tpl;
+    tpl.id_ = TemplateId{"t1"};
+    tpl.name_ = "Doomed";
+    std::vector<Fill> fills{{FieldId{"f1"}, "x", {}}};
+
+    const auto dest = uniqueTempPath("") / "no-such-dir" / "out.pdf";
+    auto result = PdfDocumentWriter{}.write(tpl, fills, dest);
+    REQUIRE_FALSE(result.has_value());
+}
+
+TEST_CASE("PdfDocumentWriter: long values wrap instead of overflowing",
+          "[formats.pdf_writer][fmt-19]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    Template tpl;
+    tpl.id_ = TemplateId{"t1"};
+    tpl.name_ = "Wrap";
+    tpl.source_format_ = "docx";
+    tpl.fields_.push_back({FieldId{"f1"}, "notes", FieldType::Paragraph});
+    std::string longValue;
+    for (int i = 0; i < 40; ++i) longValue += "wrappedword" + std::to_string(i) + " ";
+    std::vector<Fill> fills;
+    fills.push_back({FieldId{"f1"}, longValue, {}});
+
+    auto result = PdfDocumentWriter{}.write(tpl, fills, tmp.path);
+    REQUIRE(result.has_value());
+
+    const std::string text = extractAllText(tmp.path);
+    REQUIRE(contains(text, "wrappedword0"));
+    REQUIRE(contains(text, "wrappedword39"));
+
+    // A4 body width fits ~90 chars at 12pt; 40 x ~13-char words cannot be one line.
+    PoDoFo::PdfMemDocument loaded;
+    loaded.Load(tmp.path.string());
+    std::vector<PoDoFo::PdfTextEntry> entries;
+    loaded.GetPages().GetPageAt(0).ExtractTextTo(entries);
+    REQUIRE(entries.size() > 3);
+}
+
+TEST_CASE("PdfDocumentWriter: embedded newlines are honored",
+          "[formats.pdf_writer][fmt-19]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    Template tpl;
+    tpl.id_ = TemplateId{"t1"};
+    tpl.name_ = "Newlines";
+    tpl.source_format_ = "docx";
+    tpl.fields_.push_back({FieldId{"f1"}, "notes", FieldType::Paragraph});
+    std::vector<Fill> fills;
+    fills.push_back({FieldId{"f1"}, "first line\nsecond line", {}});
+
+    auto result = PdfDocumentWriter{}.write(tpl, fills, tmp.path);
+    REQUIRE(result.has_value());
+    const std::string text = extractAllText(tmp.path);
+    REQUIRE(contains(text, "first line"));
+    REQUIRE(contains(text, "second line"));
+}
+
+TEST_CASE("PdfDocumentWriter: very long content paginates",
+          "[formats.pdf_writer][fmt-19]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    Template tpl;
+    tpl.id_ = TemplateId{"t1"};
+    tpl.name_ = "Paginate";
+    tpl.source_format_ = "docx";
+    tpl.fields_.push_back({FieldId{"f1"}, "notes", FieldType::Paragraph});
+    std::string huge;
+    for (int i = 0; i < 250; ++i) huge += "paragraphline" + std::to_string(i) + "\n";
+    std::vector<Fill> fills;
+    fills.push_back({FieldId{"f1"}, huge, {}});
+
+    auto result = PdfDocumentWriter{}.write(tpl, fills, tmp.path);
+    REQUIRE(result.has_value());
+
+    PoDoFo::PdfMemDocument loaded;
+    loaded.Load(tmp.path.string());
+    REQUIRE(loaded.GetPages().GetCount() >= 2);
+    const std::string text = extractAllText(tmp.path);
+    REQUIRE(contains(text, "paragraphline0"));
+    REQUIRE(contains(text, "paragraphline249"));
+}
+
+TEST_CASE("PdfDocumentWriter: non-WinAnsi characters do not fail the export",
+          "[formats.pdf_writer][fmt-19]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    Template tpl;
+    tpl.id_ = TemplateId{"t1"};
+    tpl.name_ = "Unicode";
+    tpl.source_format_ = "docx";
+    tpl.fields_.push_back({FieldId{"f1"}, "greeting", FieldType::Text});
+    std::vector<Fill> fills;
+    fills.push_back({FieldId{"f1"}, "\xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82 hello", {}});
+
+    auto result = PdfDocumentWriter{}.write(tpl, fills, tmp.path);
+    REQUIRE(result.has_value());
+    const std::string text = extractAllText(tmp.path);
+    REQUIRE(contains(text, "hello"));
+    REQUIRE(contains(text, "?"));
 }
