@@ -1,5 +1,6 @@
 #include "settings_dialog.hpp"
 
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFormLayout>
@@ -9,8 +10,10 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QThread>
 #include <QVBoxLayout>
 
+#include "model_list_worker.hpp"
 #include "mondoc/expected.hpp"
 #include "ui_style.hpp"
 
@@ -27,7 +30,8 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
     : QDialog(parent),
       url_edit_(new QLineEdit(this)),
       key_edit_(new QLineEdit(this)),
-      model_edit_(new QLineEdit(this)),
+      model_combo_(new QComboBox(this)),
+      refresh_models_btn_(new QPushButton(this)),
       soffice_edit_(new QLineEdit(this)),
       helper_label_(new QLabel(tr("Changes take effect immediately \xe2\x80\x94 no restart required."), this)),
       error_label_(new QLabel(this)),
@@ -46,9 +50,21 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
     key_edit_->setEchoMode(QLineEdit::Password);
     key_edit_->setAccessibleName(tr("API Key"));
 
-    model_edit_->setText(QString::fromStdString(current.model_));
-    model_edit_->setPlaceholderText(QStringLiteral("gpt-4o-mini"));
-    model_edit_->setAccessibleName(tr("Model name"));
+    model_combo_->setEditable(true);
+    model_combo_->setInsertPolicy(QComboBox::NoInsert);
+    model_combo_->setCurrentText(QString::fromStdString(current.model_));
+    model_combo_->lineEdit()->setPlaceholderText(QStringLiteral("gpt-4o-mini"));
+    model_combo_->setAccessibleName(tr("Model name"));
+
+    refresh_models_btn_->setText(tr("Refresh"));
+    refresh_models_btn_->setAccessibleName(tr("Refresh model list"));
+    connect(refresh_models_btn_, &QPushButton::clicked,
+            this, &SettingsDialog::onRefreshModels);
+
+    auto* modelRow = new QHBoxLayout;
+    modelRow->setContentsMargins(0, 0, 0, 0);
+    modelRow->addWidget(model_combo_, 1);
+    modelRow->addWidget(refresh_models_btn_);
 
     const QSettings appSettings(QString::fromLatin1(kSettingsOrg), QString::fromLatin1(kSettingsApp));
     soffice_edit_->setText(appSettings.value(QString::fromLatin1(kSofficeKey)).toString());
@@ -78,7 +94,7 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
     form->setContentsMargins(0, 0, 0, 0);
     form->addRow(tr("API URL:"), url_edit_);
     form->addRow(tr("API Key:"), key_edit_);
-    form->addRow(tr("Model:"), model_edit_);
+    form->addRow(tr("Model:"), modelRow);
     form->addRow(tr("LibreOffice path:"), sofficeRow);
 
     if (auto* saveBtn = buttons_->button(QDialogButtonBox::Save)) {
@@ -99,13 +115,90 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
 
     connect(buttons_, &QDialogButtonBox::accepted, this, &SettingsDialog::onSave);
     connect(buttons_, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    if (!url_edit_->text().trimmed().isEmpty() && !key_edit_->text().isEmpty()) {
+        startModelFetch();
+    }
+}
+
+SettingsDialog::~SettingsDialog() {
+    shutdownModelsThread();
+}
+
+void SettingsDialog::shutdownModelsThread() {
+    if (!models_thread_) return;
+    models_thread_->quit();
+    // Blocking close on an in-flight fetch is bounded by the client's
+    // 10 s connect / 30 s read timeouts (C-3: never destroy a running QThread).
+    models_thread_->wait();
+    models_thread_->deleteLater();
+    models_thread_ = nullptr;
+}
+
+void SettingsDialog::onRefreshModels() {
+    startModelFetch();
+}
+
+void SettingsDialog::startModelFetch() {
+    if (models_thread_) return;  // one fetch at a time; button is disabled anyway
+
+    const int generation = ++models_generation_;
+    refresh_models_btn_->setEnabled(false);
+    refresh_models_btn_->setToolTip(tr("Fetching models\xe2\x80\xa6"));
+
+    auto* thread = new QThread(this);
+    auto* worker = new ModelListWorker(url_edit_->text().trimmed().toStdString(),
+                                       key_edit_->text().toStdString());
+    worker->moveToThread(thread);
+    connect(thread, &QThread::started, worker, &ModelListWorker::run);
+    connect(worker, &ModelListWorker::finished, this,
+            [this, generation](QStringList models) {
+                onModelsFetched(generation, std::move(models));
+            });
+    connect(worker, &ModelListWorker::failed, this,
+            [this, generation](QString message) {
+                onModelsFailed(generation, std::move(message));
+            });
+    connect(worker, &ModelListWorker::finished, thread, &QThread::quit);
+    connect(worker, &ModelListWorker::failed, thread, &QThread::quit);
+    connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+    models_thread_ = thread;
+    thread->start();
+}
+
+void SettingsDialog::onModelsFetched(int generation, QStringList models) {
+    finishModelsThread();
+    if (generation != models_generation_) return;
+    const QString previous = model_combo_->currentText();
+    model_combo_->clear();
+    model_combo_->addItems(models);
+    model_combo_->setCurrentText(previous);  // selects if present, keeps as text otherwise
+    error_label_->setVisible(false);
+}
+
+void SettingsDialog::onModelsFailed(int generation, QString message) {
+    finishModelsThread();
+    if (generation != models_generation_) return;
+    error_label_->setText(tr("Could not fetch models: %1").arg(message));
+    error_label_->setVisible(true);
+}
+
+void SettingsDialog::finishModelsThread() {
+    refresh_models_btn_->setEnabled(true);
+    refresh_models_btn_->setToolTip(QString());
+    if (models_thread_) {
+        models_thread_->quit();
+        models_thread_->wait();
+        models_thread_->deleteLater();
+        models_thread_ = nullptr;
+    }
 }
 
 void SettingsDialog::onSave() {
     mondoc::adapters::ai::LlmConfig cfg;
     cfg.api_url_ = url_edit_->text().trimmed().toStdString();
     cfg.api_key_ = key_edit_->text().toStdString();
-    cfg.model_ = model_edit_->text().trimmed().toStdString();
+    cfg.model_ = model_combo_->currentText().trimmed().toStdString();
 
     const auto result = cfg.saveToJson(config_path_);
     if (!result) {
