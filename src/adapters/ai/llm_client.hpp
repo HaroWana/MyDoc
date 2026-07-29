@@ -2,6 +2,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "i_llm_client.hpp"
@@ -32,6 +33,14 @@ public:
     parseModelsResponse(const std::string& body);
 
     static LlmError classifyHttpStatus(int status, std::string bodyTrunc);
+
+    // Splits "https://host[:port][/prefix]" into (scheme://host[:port], /prefix).
+    // Empty prefix when the URL has no path (or only "/"); trailing slash
+    // stripped. Visible for testing.
+    static std::pair<std::string, std::string> splitApiUrl(const std::string& url);
+
+    const std::string& host() const noexcept { return host_; }
+    const std::string& pathPrefix() const noexcept { return path_prefix_; }
 
 private:
     LlmClient(std::string host, std::string apiKey, std::string pathPrefix);

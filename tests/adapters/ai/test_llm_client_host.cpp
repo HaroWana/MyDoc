@@ -2,6 +2,9 @@
 
 #include "llm_client.hpp"
 
+#include <string>
+#include <utility>
+
 using mondoc::adapters::ai::LlmClient;
 using mondoc::adapters::ai::isAcceptableHost;
 
@@ -28,4 +31,43 @@ TEST_CASE("LlmClient::create returns error instead of throwing on bad host",
     REQUIRE_FALSE(r.has_value());
     auto ok = LlmClient::create("https://api.example.com", "key", "/v1");
     REQUIRE(ok.has_value());
+}
+
+TEST_CASE("splitApiUrl: URL path becomes the API prefix",
+          "[adapters.ai][llm_client]") {
+    using mondoc::adapters::ai::LlmClient;
+    CHECK(LlmClient::splitApiUrl("https://ai.example.com/api") ==
+          std::pair<std::string, std::string>{"https://ai.example.com", "/api"});
+    CHECK(LlmClient::splitApiUrl("https://api.openai.com/v1") ==
+          std::pair<std::string, std::string>{"https://api.openai.com", "/v1"});
+    CHECK(LlmClient::splitApiUrl("http://localhost:8080/api/v1") ==
+          std::pair<std::string, std::string>{"http://localhost:8080", "/api/v1"});
+}
+
+TEST_CASE("splitApiUrl: no path or bare slash yields empty prefix",
+          "[adapters.ai][llm_client]") {
+    using mondoc::adapters::ai::LlmClient;
+    CHECK(LlmClient::splitApiUrl("https://api.openai.com") ==
+          std::pair<std::string, std::string>{"https://api.openai.com", ""});
+    CHECK(LlmClient::splitApiUrl("https://api.openai.com/") ==
+          std::pair<std::string, std::string>{"https://api.openai.com", ""});
+    CHECK(LlmClient::splitApiUrl("https://ai.example.com/api/") ==
+          std::pair<std::string, std::string>{"https://ai.example.com", "/api"});
+}
+
+TEST_CASE("create: URL path overrides the default /v1 prefix",
+          "[adapters.ai][llm_client]") {
+    using mondoc::adapters::ai::LlmClient;
+    auto withPath = LlmClient::create("https://ai.example.com/api", "key");
+    REQUIRE(withPath.has_value());
+    CHECK((*withPath)->pathPrefix() == "/api");
+    CHECK((*withPath)->host() == "https://ai.example.com");
+
+    auto noPath = LlmClient::create("https://ai.example.com", "key");
+    REQUIRE(noPath.has_value());
+    CHECK((*noPath)->pathPrefix() == "/v1");
+
+    auto loopback = LlmClient::create("http://localhost:8080/v1", "key");
+    REQUIRE(loopback.has_value());
+    CHECK((*loopback)->host() == "http://localhost:8080");
 }

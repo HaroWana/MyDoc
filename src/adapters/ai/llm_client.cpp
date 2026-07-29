@@ -64,13 +64,35 @@ LlmError LlmClient::classifyHttpStatus(int status, std::string bodyTrunc) {
     return LlmError::badResponse("unexpected status " + std::to_string(status));
 }
 
+std::pair<std::string, std::string> LlmClient::splitApiUrl(const std::string& url) {
+    const auto schemeEnd = url.find("://");
+    const auto authorityStart = (schemeEnd == std::string::npos) ? 0 : schemeEnd + 3;
+    auto pathStart = url.find('/', authorityStart);
+    if (pathStart == std::string::npos) {
+        return {url, ""};
+    }
+    std::string prefix = url.substr(pathStart);
+    while (!prefix.empty() && prefix.back() == '/') {
+        prefix.pop_back();
+    }
+    return {url.substr(0, pathStart), std::move(prefix)};
+}
+
 mondoc::expected<std::unique_ptr<LlmClient>, LlmError>
 LlmClient::create(std::string host, std::string apiKey, std::string pathPrefix) {
     if (!isAcceptableHost(host)) {
         return mondoc::unexpected(LlmError::unreachable("insecure LLM URL: " + host));
     }
+    // httplib::Client cannot take a path in its base URL (the whole string
+    // would silently be treated as a hostname), and hubs differ on where the
+    // OpenAI-compatible API lives ("/v1", "/api", ...). A path in the
+    // configured URL therefore overrides the default prefix.
+    auto [bareHost, urlPrefix] = splitApiUrl(host);
+    if (!urlPrefix.empty()) {
+        pathPrefix = std::move(urlPrefix);
+    }
     return std::unique_ptr<LlmClient>(
-        new LlmClient(std::move(host), std::move(apiKey), std::move(pathPrefix)));
+        new LlmClient(std::move(bareHost), std::move(apiKey), std::move(pathPrefix)));
 }
 
 LlmClient::LlmClient(std::string host, std::string apiKey, std::string pathPrefix)
