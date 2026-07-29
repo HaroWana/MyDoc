@@ -299,6 +299,15 @@ void SchemaDockWidget::populate(const std::vector<mondoc::domain::Field>& fields
     suppress_selection_signal_ = false;
 }
 
+void SchemaDockWidget::updateLocation(const mondoc::FieldId& id,
+                                       const std::optional<mondoc::domain::FieldLocation>& loc) {
+    if (loc) {
+        locations_[id.value()] = *loc;
+    } else {
+        locations_.erase(id.value());
+    }
+}
+
 std::vector<mondoc::domain::Field> SchemaDockWidget::currentFields() const {
     std::vector<mondoc::domain::Field> result;
     const int rows = table_->rowCount();

@@ -25,6 +25,10 @@ public:
 
     void populate(const std::vector<mondoc::domain::Field>& fields);
     void addFieldExternal(const mondoc::domain::Field& field);
+    // Updates a single field's location without touching table rows, so
+    // uncommitted name/type edits and dock-added rows survive a canvas nudge.
+    void updateLocation(const mondoc::FieldId& id,
+                         const std::optional<mondoc::domain::FieldLocation>& loc);
     std::vector<mondoc::domain::Field> currentFields() const;
 
     void setAiConfigured(bool configured);

@@ -912,17 +912,20 @@ void MainWindow::shutdownPreviewThread(bool mustJoin) {
     if (!thread->isRunning()) return;
 
     thread->quit();
-    if (thread->wait(5000)) return;
 
     if (mustJoin) {
+        // Blocking app-close on a running conversion is the deliberate C-3
+        // tradeoff: there's no cancellation hook, so this can wait a while.
         thread->wait();
         return;
     }
 
-    // PreviewWorker has no cancellation hook (a LibreOffice conversion can't
-    // be interrupted mid-flight): detach and let the existing
-    // finished/failed -> thread->quit and thread->finished -> deleteLater
-    // connections reap both objects once the conversion actually completes.
+    // quit() can't take effect while the worker is inside a blocking
+    // LibreOffice run, so waiting here would just freeze the UI until the
+    // conversion finishes. PreviewWorker has no cancellation hook either:
+    // detach and let the existing finished/failed -> thread->quit and
+    // thread->finished -> deleteLater connections reap both objects once the
+    // conversion actually completes.
     thread->setParent(nullptr);
 }
 
@@ -943,13 +946,21 @@ void MainWindow::handlePreviewFinished(int generation, const QString& previewPdf
     }
 
     preview_loaded_ = true;
-    pending_template_ = *selected_template_;
-    pending_document_text_.clear();
-    schema_widget_->setDocumentText(pending_document_text_);
-    schema_widget_->populate(pending_template_.fields_);
+
+    // If the dock is already showing a draft for a *different* template (an
+    // in-progress registration or AI proposal), a conversion landing late
+    // must not seize it out from under the user — just refresh the canvas.
+    const bool dockBusy = schema_widget_->isVisible() &&
+                          pending_template_.id_.value() != selected_template_->id_.value();
+    if (!dockBusy) {
+        pending_template_ = *selected_template_;
+        pending_document_text_.clear();
+        schema_widget_->setDocumentText(pending_document_text_);
+        schema_widget_->populate(pending_template_.fields_);
+    }
 
     document_canvas_->show();
-    document_canvas_->setFrames(pending_template_.fields_);
+    document_canvas_->setFrames(dockBusy ? selected_template_->fields_ : pending_template_.fields_);
     document_canvas_->setStaleWarning(regenerated && hadLocatedFields);
 }
 
@@ -1012,7 +1023,7 @@ void MainWindow::onCanvasFrameChanged(mondoc::FieldId id, mondoc::domain::PdfLoc
             anchor = computeTextAnchor(loc);
         }
         field.location_ = mondoc::domain::FieldLocation{loc, anchor};
-        schema_widget_->populate(pending_template_.fields_);
+        schema_widget_->updateLocation(field.id_, field.location_);
         return;
     }
 }
