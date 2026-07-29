@@ -4,6 +4,7 @@ add_library(mondoc_ui STATIC
     ai_fill_worker.cpp
     ai_refine_worker.cpp
     chat_pane.cpp
+    document_canvas.cpp
     edit_field_command.cpp
     export_dialog.cpp
     field_form_pane.cpp
