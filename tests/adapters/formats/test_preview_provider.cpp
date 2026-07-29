@@ -24,8 +24,8 @@ TEST_CASE("previewPdfFor: pdf source is identity", "[formats.preview]") {
     writeFile(src.path, "%PDF-1.4\n");
     auto r = previewPdfFor(src.path, "tpl1", std::filesystem::temp_directory_path(), {});
     REQUIRE(r.has_value());
-    REQUIRE(r->pdf == src.path);
-    REQUIRE_FALSE(r->regenerated);
+    REQUIRE(r->pdf_ == src.path);
+    REQUIRE_FALSE(r->regenerated_);
 }
 
 TEST_CASE("previewPdfFor: unsupported extension is an error", "[formats.preview]") {
@@ -51,8 +51,42 @@ TEST_CASE("previewPdfFor: fresh sidecar reuses the cache without soffice", "[for
     // sofficePath deliberately bogus: a cache hit must not invoke it.
     auto r = previewPdfFor(src.path, "tpl1", cacheDir, "/nonexistent/soffice");
     REQUIRE(r.has_value());
-    REQUIRE(r->pdf == cacheDir / "tpl1.pdf");
-    REQUIRE_FALSE(r->regenerated);
+    REQUIRE(r->pdf_ == cacheDir / "tpl1.pdf");
+    REQUIRE_FALSE(r->regenerated_);
+    std::filesystem::remove_all(cacheDir, ec);
+}
+
+TEST_CASE("previewPdfFor: unsafe templateId is rejected", "[formats.preview]") {
+    TempFile src{uniqueTempPath(".txt")};
+    writeFile(src.path, "hello");
+    const auto cacheDir = std::filesystem::temp_directory_path();
+
+    auto r1 = previewPdfFor(src.path, "../escape", cacheDir, {});
+    REQUIRE_FALSE(r1.has_value());
+    REQUIRE(r1.error().kind() == mondoc::Error::Kind::InvalidArgument);
+
+    auto r2 = previewPdfFor(src.path, "tpl1; rm -rf /", cacheDir, {});
+    REQUIRE_FALSE(r2.has_value());
+    REQUIRE(r2.error().kind() == mondoc::Error::Kind::InvalidArgument);
+}
+
+TEST_CASE("previewPdfFor: cache hit works when cacheDir contains a space", "[formats.preview]") {
+    TempFile src{uniqueTempPath(".txt")};
+    writeFile(src.path, "hello");
+    const auto cacheDir = uniqueTempPath("") += " with space";
+    std::filesystem::create_directories(cacheDir);
+    writeFile(cacheDir / "tpl1.pdf", "%PDF-1.4 cached\n");
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(src.path, ec);
+    const auto mtime = std::filesystem::last_write_time(src.path, ec)
+                           .time_since_epoch().count();
+    nlohmann::json sidecar{{"size", size}, {"mtime", mtime}};
+    writeFile(cacheDir / "tpl1.json", sidecar.dump());
+
+    auto r = previewPdfFor(src.path, "tpl1", cacheDir, "/nonexistent/soffice");
+    REQUIRE(r.has_value());
+    REQUIRE(r->pdf_ == cacheDir / "tpl1.pdf");
+    REQUIRE_FALSE(r->regenerated_);
     std::filesystem::remove_all(cacheDir, ec);
 }
 
@@ -76,12 +110,12 @@ TEST_CASE("previewPdfFor: real conversion produces a PDF", "[formats.preview][lo
     std::filesystem::create_directories(cacheDir);
     auto r = previewPdfFor(src.path, "tpl1", cacheDir, findLibreOffice());
     REQUIRE(r.has_value());
-    REQUIRE(r->regenerated);
-    REQUIRE(std::filesystem::file_size(r->pdf) > 100);
+    REQUIRE(r->regenerated_);
+    REQUIRE(std::filesystem::file_size(r->pdf_) > 100);
     // second call: cache hit
     auto r2 = previewPdfFor(src.path, "tpl1", cacheDir, findLibreOffice());
     REQUIRE(r2.has_value());
-    REQUIRE_FALSE(r2->regenerated);
+    REQUIRE_FALSE(r2->regenerated_);
     std::error_code ec;
     std::filesystem::remove_all(cacheDir, ec);
 }

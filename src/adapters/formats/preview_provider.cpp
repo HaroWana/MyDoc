@@ -4,7 +4,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -26,17 +28,22 @@ bool isConvertible(std::string_view ext) {
 }
 
 int runCommand(const std::string& cmd) {
+#if defined(_WIN32)
+    FILE* pipe = _popen(cmd.c_str(), "r");
+#else
     FILE* pipe = popen(cmd.c_str(), "r");
+#endif
     if (!pipe) return -1;
     std::array<char, 256> buf{};
     while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
         // discard output
     }
-    int status = pclose(pipe);
-    if (status == -1) return -1;
 #if defined(_WIN32)
+    int status = _pclose(pipe);
     return status;
 #else
+    int status = pclose(pipe);
+    if (status == -1) return -1;
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 #endif
 }
@@ -45,8 +52,22 @@ std::string quoted(const std::filesystem::path& p) {
     return "\"" + mondoc::pathToUtf8(p) + "\"";
 }
 
+std::string quoted(const std::string& s) {
+    return "\"" + s + "\"";
+}
+
 bool containsQuote(const std::filesystem::path& p) {
     return mondoc::pathToUtf8(p).find('"') != std::string::npos;
+}
+
+// Template ids are UUIDs in practice; this allowlist also rules out shell
+// metacharacters (the id is interpolated into a popen'd command) and path
+// traversal (the id becomes a path segment under cacheDir).
+bool isValidTemplateId(const std::string& id) {
+    if (id.empty() || id.find("..") != std::string::npos) return false;
+    return std::all_of(id.begin(), id.end(), [](unsigned char c) {
+        return std::isalnum(c) || c == '.' || c == '_' || c == '-';
+    });
 }
 
 }  // namespace
@@ -99,6 +120,10 @@ previewPdfFor(const std::filesystem::path& source,
     if (containsQuote(source) || containsQuote(cacheDir) || containsQuote(sofficePath)) {
         return mondoc::unexpected(mondoc::Error::invalidArgument(
             "path must not contain a double quote"));
+    }
+    if (!isValidTemplateId(templateId)) {
+        return mondoc::unexpected(mondoc::Error::invalidArgument(
+            "templateId must be non-empty and contain only letters, digits, '.', '_', '-'"));
     }
 
     const std::filesystem::path pdfPath = cacheDir / (templateId + ".pdf");
@@ -155,8 +180,8 @@ previewPdfFor(const std::filesystem::path& source,
     cmd += "timeout " + std::to_string(kConvertTimeoutSeconds) + " ";
 #endif
     cmd += quoted(sofficePath) +
-           " --headless --norestore -env:UserInstallation=file://" +
-           mondoc::pathToUtf8(profileDir) +
+           " --headless --norestore " +
+           quoted(std::string{"-env:UserInstallation=file://"} + mondoc::pathToUtf8(profileDir)) +
            " --convert-to pdf --outdir " + quoted(cacheDir) + " " + quoted(input) +
            " >/dev/null 2>&1";
 

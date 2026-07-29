@@ -13,8 +13,8 @@ namespace mondoc::adapters::formats {
 std::filesystem::path findLibreOffice(const std::filesystem::path& override = {});
 
 struct PreviewResult {
-    std::filesystem::path pdf;   // the preview PDF to render
-    bool regenerated = false;    // true when a stale cache was rebuilt this call
+    std::filesystem::path pdf_;   // the preview PDF to render
+    bool regenerated_ = false;    // true when a stale cache was rebuilt this call
 };
 
 // .pdf sources are returned as-is (regenerated=false, no cache entry).
