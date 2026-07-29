@@ -985,8 +985,8 @@ void MainWindow::onCanvasFrameDrawn(mondoc::domain::PdfLocation loc) {
     }
     field.location_ = mondoc::domain::FieldLocation{loc, anchor};
 
-    schema_widget_->addFieldExternal(field);
     pending_template_.fields_.push_back(field);
+    schema_widget_->addFieldExternal(field);
     document_canvas_->setFrames(pending_template_.fields_);
 
     schema_widget_->show();

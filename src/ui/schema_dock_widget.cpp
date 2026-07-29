@@ -282,6 +282,11 @@ void SchemaDockWidget::addFieldExternal(const mondoc::domain::Field& field) {
 }
 
 void SchemaDockWidget::populate(const std::vector<mondoc::domain::Field>& fields) {
+    // A repopulate is a programmatic resync, not a user selection — suppress
+    // so a selection index left over from the previous content doesn't replay
+    // as a spurious rowSelected against the new content (e.g. across template
+    // switches).
+    suppress_selection_signal_ = true;
     table_->clearContents();
     table_->setRowCount(static_cast<int>(fields.size()));
     locations_.clear();
@@ -291,6 +296,7 @@ void SchemaDockWidget::populate(const std::vector<mondoc::domain::Field>& fields
         if (fields[row].location_) locations_[fields[row].id_.value()] = *fields[row].location_;
     }
     onSelectionChanged();
+    suppress_selection_signal_ = false;
 }
 
 std::vector<mondoc::domain::Field> SchemaDockWidget::currentFields() const {
@@ -351,7 +357,15 @@ void SchemaDockWidget::onAddField() {
 void SchemaDockWidget::onRemoveField() {
     const int row = table_->currentRow();
     if (row < 0) return;
+    if (auto* nameItem = table_->item(row, 0)) {
+        const std::string id = nameItem->data(kFieldIdRole).toString().toStdString();
+        if (!id.empty()) locations_.erase(id);
+    }
+    // Qt's row-removal reselection is an internal side effect, not a user
+    // pick — suppress it and emit a single settled rowSelected below.
+    suppress_selection_signal_ = true;
     table_->removeRow(row);
+    suppress_selection_signal_ = false;
     onSelectionChanged();
 }
 
