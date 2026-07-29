@@ -66,7 +66,6 @@ PdfDocumentReader::read(const std::filesystem::path& path) {
         // Build field collection from acroform
         std::vector<mondoc::domain::Field> fields;
         std::unordered_set<std::string> seen;
-        std::unordered_map<std::string, mondoc::domain::Field*> fieldMap;
 
         for (PoDoFo::PdfField* field : *acroForm) {
             mondoc::domain::FieldType type;
@@ -95,7 +94,12 @@ PdfDocumentReader::read(const std::filesystem::path& path) {
             f.type_   = type;
             f.origin_ = mondoc::domain::FieldOrigin::FormControl;
             fields.push_back(std::move(f));
-            fieldMap[name] = &fields.back();
+        }
+
+        // Build index map after all fields are collected to avoid vector reallocation issues
+        std::unordered_map<std::string, std::size_t> fieldMap;
+        for (std::size_t i = 0; i < fields.size(); ++i) {
+            fieldMap[fields[i].name_] = i;
         }
 
         // Search pages for widgets and populate field locations
@@ -114,10 +118,12 @@ PdfDocumentReader::read(const std::filesystem::path& path) {
 
                         auto it = fieldMap.find(widgetFieldName);
                         if (it != fieldMap.end()) {
-                            mondoc::domain::Field* f = it->second;
+                            std::size_t fieldIdx = it->second;
+                            mondoc::domain::Field& f = fields[fieldIdx];
                             const auto pageRect = page.GetRect();
                             const auto r = widget->GetRect();
-                            if (pageRect.Width > 0 && pageRect.Height > 0 && !f->location_.has_value()) {
+                            // First widget in page/annotation order wins for multi-widget fields
+                            if (pageRect.Width > 0 && pageRect.Height > 0 && !f.location_.has_value()) {
                                 mondoc::domain::PdfLocation loc;
                                 loc.page_index = static_cast<int>(pageIdx);
                                 loc.x = (r.X - pageRect.X) / pageRect.Width;
@@ -125,10 +131,10 @@ PdfDocumentReader::read(const std::filesystem::path& path) {
                                 loc.h = r.Height / pageRect.Height;
                                 // PDF origin is bottom-left; PdfLocation is top-left based.
                                 loc.y = 1.0 - ((r.Y - pageRect.Y) + r.Height) / pageRect.Height;
-                                f->location_ = mondoc::domain::FieldLocation{loc, std::nullopt};
+                                f.location_ = mondoc::domain::FieldLocation{loc, std::nullopt};
                             }
                         }
-                    } catch (...) {
+                    } catch (const PoDoFo::PdfError&) {
                         // Widget might not have an associated field, skip it
                     }
                 }

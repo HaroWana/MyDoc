@@ -148,3 +148,46 @@ TEST_CASE("PdfDocumentReader: AcroForm field rect is captured as PdfLocation",
     REQUIRE(loc->pdf->w == Catch::Approx(200.0 / 595.28).margin(0.01));
     REQUIRE(loc->pdf->h == Catch::Approx(20.0 / 841.89).margin(0.01));
 }
+
+TEST_CASE("PdfDocumentReader: multiple AcroForm fields capture distinct locations",
+          "[formats.pdf_reader][visual-fill]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    {
+        PoDoFo::PdfMemDocument doc;
+        auto& page = doc.GetPages().CreatePage(
+            PoDoFo::PdfPage::CreateStandardPageSize(PoDoFo::PdfPageSize::A4));
+        // Create 6 fields at distinct positions to force vector reallocation
+        // and catch assignment bugs
+        page.CreateField<PoDoFo::PdfTextBox>("field_1", PoDoFo::Rect(50, 700, 100, 20));
+        page.CreateField<PoDoFo::PdfTextBox>("field_2", PoDoFo::Rect(50, 650, 100, 20));
+        page.CreateField<PoDoFo::PdfTextBox>("field_3", PoDoFo::Rect(50, 600, 100, 20));
+        page.CreateField<PoDoFo::PdfTextBox>("field_4", PoDoFo::Rect(50, 550, 100, 20));
+        page.CreateField<PoDoFo::PdfTextBox>("field_5", PoDoFo::Rect(50, 500, 100, 20));
+        page.CreateField<PoDoFo::PdfTextBox>("field_6", PoDoFo::Rect(50, 450, 100, 20));
+        doc.Save(tmp.path.string());
+    }
+    auto result = PdfDocumentReader{}.read(tmp.path);
+    REQUIRE(result.has_value());
+    REQUIRE(result->fields_.size() == 6);
+
+    // Verify each field's location matches its own rect, not a neighbor's
+    // A4 = 595.28 x 841.89 pt
+    std::vector<double> expected_y = {
+        (841.89 - 720.0) / 841.89,
+        (841.89 - 670.0) / 841.89,
+        (841.89 - 620.0) / 841.89,
+        (841.89 - 570.0) / 841.89,
+        (841.89 - 520.0) / 841.89,
+        (841.89 - 470.0) / 841.89,
+    };
+
+    for (unsigned i = 0; i < 6; ++i) {
+        REQUIRE(result->fields_[i].location_.has_value());
+        REQUIRE(result->fields_[i].location_->pdf.has_value());
+        REQUIRE(result->fields_[i].location_->pdf->page_index == 0);
+        REQUIRE(result->fields_[i].location_->pdf->x == Catch::Approx(50.0 / 595.28).margin(0.01));
+        REQUIRE(result->fields_[i].location_->pdf->y == Catch::Approx(expected_y[i]).margin(0.01));
+        REQUIRE(result->fields_[i].location_->pdf->w == Catch::Approx(100.0 / 595.28).margin(0.01));
+        REQUIRE(result->fields_[i].location_->pdf->h == Catch::Approx(20.0 / 841.89).margin(0.01));
+    }
+}
