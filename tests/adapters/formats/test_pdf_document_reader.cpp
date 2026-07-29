@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include "pdf_document_reader.hpp"
 #include "domain/field.hpp"
@@ -121,4 +122,29 @@ TEST_CASE("[TMPL-06][TST-3] PdfDocumentReader: rejects XFA-only PDF with actiona
 
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().message().find("XFA") != std::string::npos);
+}
+
+TEST_CASE("PdfDocumentReader: AcroForm field rect is captured as PdfLocation",
+          "[formats.pdf_reader][visual-fill]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    {
+        PoDoFo::PdfMemDocument doc;
+        auto& page = doc.GetPages().CreatePage(
+            PoDoFo::PdfPage::CreateStandardPageSize(PoDoFo::PdfPageSize::A4));
+        PoDoFo::Rect rect(50, 700, 200, 20);
+        page.CreateField<PoDoFo::PdfTextBox>("customer_name", rect);
+        doc.Save(tmp.path.string());
+    }
+    auto result = PdfDocumentReader{}.read(tmp.path);
+    REQUIRE(result.has_value());
+    REQUIRE(result->fields_.size() == 1);
+    const auto& loc = result->fields_[0].location_;
+    REQUIRE(loc.has_value());
+    REQUIRE(loc->pdf.has_value());
+    // A4 = 595.28 x 841.89 pt; PDF y is bottom-up, ours top-down.
+    REQUIRE(loc->pdf->page_index == 0);
+    REQUIRE(loc->pdf->x == Catch::Approx(50.0 / 595.28).margin(0.01));
+    REQUIRE(loc->pdf->y == Catch::Approx((841.89 - 720.0) / 841.89).margin(0.01));
+    REQUIRE(loc->pdf->w == Catch::Approx(200.0 / 595.28).margin(0.01));
+    REQUIRE(loc->pdf->h == Catch::Approx(20.0 / 841.89).margin(0.01));
 }
