@@ -2,6 +2,7 @@
 
 #include <QDockWidget>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "ai_field_detector.hpp"
@@ -30,9 +31,12 @@ public:
     void setDocumentText(std::string text);
     void setDetector(mondoc::adapters::ai::AiFieldDetector* detector);
 
+    void selectRow(int row);  // programmatic selection (no signal echo)
+
 signals:
     void schemaSaved();
     void schemaDiscarded();
+    void rowSelected(int row);  // user selected a row
 
 private slots:
     void onAddField();
@@ -69,6 +73,12 @@ private:
     QThread* ai_thread_ = nullptr;
     AiFieldDetectWorker* ai_worker_ = nullptr;
     mondoc::adapters::ai::AiFieldDetector* detector_ = nullptr;
+    bool suppress_selection_signal_ = false;
+
+    // The table only tracks name/type per row; field locations (PDF AcroForm
+    // positions, canvas-drawn frames) are kept here keyed by field id so
+    // currentFields() can reattach them instead of silently dropping them.
+    std::unordered_map<std::string, mondoc::domain::FieldLocation> locations_;
 };
 
 }  // namespace mondoc::ui

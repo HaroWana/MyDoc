@@ -1,15 +1,24 @@
 #include "settings_dialog.hpp"
 
 #include <QDialogButtonBox>
+#include <QFileDialog>
 #include <QFormLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QVBoxLayout>
 
 #include "mondoc/expected.hpp"
 #include "ui_style.hpp"
+
+namespace {
+constexpr auto kSettingsOrg = "MonDoc";
+constexpr auto kSettingsApp = "MonDoc";
+constexpr auto kSofficeKey = "libreoffice/path";
+}  // namespace
 
 namespace mondoc::ui {
 
@@ -19,6 +28,7 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
       url_edit_(new QLineEdit(this)),
       key_edit_(new QLineEdit(this)),
       model_edit_(new QLineEdit(this)),
+      soffice_edit_(new QLineEdit(this)),
       helper_label_(new QLabel(tr("Changes take effect immediately \xe2\x80\x94 no restart required."), this)),
       error_label_(new QLabel(this)),
       buttons_(new QDialogButtonBox(
@@ -40,6 +50,21 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
     model_edit_->setPlaceholderText(QStringLiteral("gpt-4o-mini"));
     model_edit_->setAccessibleName(tr("Model name"));
 
+    const QSettings appSettings(QString::fromLatin1(kSettingsOrg), QString::fromLatin1(kSettingsApp));
+    soffice_edit_->setText(appSettings.value(QString::fromLatin1(kSofficeKey)).toString());
+    soffice_edit_->setPlaceholderText(tr("Auto-detect"));
+    soffice_edit_->setAccessibleName(tr("LibreOffice path"));
+
+    auto* browseSofficeBtn = new QPushButton(tr("Browse\xe2\x80\xa6"), this);
+    browseSofficeBtn->setAccessibleName(tr("Browse for LibreOffice"));
+    connect(browseSofficeBtn, &QPushButton::clicked,
+            this, &SettingsDialog::onBrowseLibreOffice);
+
+    auto* sofficeRow = new QHBoxLayout;
+    sofficeRow->setContentsMargins(0, 0, 0, 0);
+    sofficeRow->addWidget(soffice_edit_);
+    sofficeRow->addWidget(browseSofficeBtn);
+
     error_label_->setVisible(false);
     error_label_->setStyleSheet(QStringLiteral("color: #DC2626;"));
     error_label_->setWordWrap(true);
@@ -54,6 +79,7 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
     form->addRow(tr("API URL:"), url_edit_);
     form->addRow(tr("API Key:"), key_edit_);
     form->addRow(tr("Model:"), model_edit_);
+    form->addRow(tr("LibreOffice path:"), sofficeRow);
 
     if (auto* saveBtn = buttons_->button(QDialogButtonBox::Save)) {
         saveBtn->setStyleSheet(accentButtonStyle());
@@ -89,8 +115,19 @@ void SettingsDialog::onSave() {
         error_label_->setVisible(true);
         return;
     }
+
+    QSettings appSettings(QString::fromLatin1(kSettingsOrg), QString::fromLatin1(kSettingsApp));
+    appSettings.setValue(QString::fromLatin1(kSofficeKey), soffice_edit_->text().trimmed());
+
     emit settingsSaved(cfg);
     accept();
+}
+
+void SettingsDialog::onBrowseLibreOffice() {
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Select LibreOffice Executable"), soffice_edit_->text());
+    if (path.isEmpty()) return;
+    soffice_edit_->setText(path);
 }
 
 }  // namespace mondoc::ui

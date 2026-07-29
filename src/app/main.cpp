@@ -76,7 +76,8 @@ int main(int argc, char* argv[]) {
                                   [&root, &window](mondoc::adapters::ai::LlmConfig cfg) {
                                       root.reconfigureLlm(std::move(cfg));
                                       window.setAiFieldDetector(root.ai_field_detector_.get());
-                                  }};
+                                  },
+                                  appDataDir};
     window.setAiFieldDetector(root.ai_field_detector_.get());
     window.resize(1024, 768);
     window.show();

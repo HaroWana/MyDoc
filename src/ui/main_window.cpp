@@ -22,10 +22,12 @@
 #include <QMimeData>
 #include <QPoint>
 #include <QPushButton>
+#include <QSettings>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QStyle>
+#include <QThread>
 #include <QToolBar>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -33,13 +35,21 @@
 #include <QWidget>
 #include <QtGlobal>
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <string>
 
 #include "about_dialog.hpp"
+#include "document_canvas.hpp"
 #include "fill_session_view.hpp"
 #include "import_conflict_dialog.hpp"
+#include "mondoc/util.hpp"
+#include "pdf_document_reader.hpp"
+#include "plain_text_extractor.hpp"
+#include "preview_anchor.hpp"
+#include "preview_provider.hpp"
+#include "preview_worker.hpp"
 #include "region_mark_viewer.hpp"
 #include "resume_banner.hpp"
 #include "schema_dock_widget.hpp"
@@ -67,6 +77,16 @@ QString pathToQString(const std::filesystem::path& p) {
     return QString::fromStdU16String(p.u16string());
 }
 
+bool anyFieldMissingLocation(const mondoc::domain::Template& t) {
+    return std::any_of(t.fields_.begin(), t.fields_.end(),
+                       [](const auto& f) { return !f.location_.has_value(); });
+}
+
+bool anyFieldLocated(const mondoc::domain::Template& t) {
+    return std::any_of(t.fields_.begin(), t.fields_.end(),
+                       [](const auto& f) { return f.location_.has_value(); });
+}
+
 }  // namespace
 
 MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
@@ -74,6 +94,7 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
                        mondoc::domain::ITemplateRepository& templateRepo,
                        const mondoc::adapters::ai::LlmConfig& currentConfig,
                        std::function<void(mondoc::adapters::ai::LlmConfig)> reconfigureLlmCallback,
+                       std::filesystem::path dataDir,
                        QWidget* parent)
     : QMainWindow(parent),
       service_(templateService),
@@ -81,12 +102,14 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
       template_repo_(templateRepo),
       current_config_(currentConfig),
       reconfigure_llm_callback_(std::move(reconfigureLlmCallback)),
+      data_dir_(std::move(dataDir)),
       template_list_(new QListWidget(this)),
       central_stack_(new QStackedWidget(this)),
       search_box_(new QLineEdit(this)),
       schema_widget_(new SchemaDockWidget(this)),
       fill_session_view_(nullptr),
       resume_banner_(nullptr),
+      document_canvas_(nullptr),
       detail_name_label_(nullptr),
       detail_format_label_(nullptr),
       detail_field_count_label_(nullptr),
@@ -94,7 +117,8 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
       detail_fill_btn_(nullptr),
       detail_rename_btn_(nullptr),
       detail_duplicate_btn_(nullptr),
-      detail_delete_btn_(nullptr) {
+      detail_delete_btn_(nullptr),
+      detect_positions_btn_(nullptr) {
     setWindowTitle(tr("MonDoc"));
     setAcceptDrops(true);
 
@@ -157,6 +181,8 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
             this, &MainWindow::onSchemaSaved);
     connect(schema_widget_, &SchemaDockWidget::schemaDiscarded,
             this, &MainWindow::onSchemaDiscarded);
+    connect(schema_widget_, &SchemaDockWidget::rowSelected,
+            this, &MainWindow::onSchemaRowSelected);
 
     template_list_->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(template_list_, &QListWidget::customContextMenuRequested,
@@ -183,6 +209,13 @@ MainWindow::MainWindow(mondoc::services::TemplateService& templateService,
 
     refreshTemplateList();
     refreshResumeBanner();
+}
+
+MainWindow::~MainWindow() {
+    // C-3: no event-loop turn separates this from main.cpp destroying the
+    // CompositionRoot right after the window, so a still-running preview
+    // conversion must be waited out rather than abandoned.
+    shutdownPreviewThread(/*mustJoin=*/true);
 }
 
 void MainWindow::buildSidebar(QWidget* sidebar) {
@@ -251,6 +284,17 @@ void MainWindow::buildDetailPage(QWidget* page) {
     sep->setFrameShadow(QFrame::Sunken);
     layout->addWidget(sep);
 
+    document_canvas_ = new DocumentCanvas(page);
+    document_canvas_->hide();
+    layout->addWidget(document_canvas_, 1);
+
+    connect(document_canvas_, &DocumentCanvas::frameDrawn,
+            this, &MainWindow::onCanvasFrameDrawn);
+    connect(document_canvas_, &DocumentCanvas::frameSelected,
+            this, &MainWindow::onCanvasFrameSelected);
+    connect(document_canvas_, &DocumentCanvas::frameChanged,
+            this, &MainWindow::onCanvasFrameChanged);
+
     auto* primaryRow = new QHBoxLayout();
     detail_fill_btn_ = new QPushButton(tr("Fill Session\xe2\x80\xa6"), page);
     detail_fill_btn_->setStyleSheet(accentButtonStyle());
@@ -272,14 +316,18 @@ void MainWindow::buildDetailPage(QWidget* page) {
     auto* markRegionBtn = new QPushButton(tr("Mark Region\xe2\x80\xa6"), page);
     markRegionBtn->setAccessibleName(tr("Mark a fillable region in the template document"));
     markRegionBtn->setToolTip(tr("Open the source document and drag to mark a fillable region"));
+    detect_positions_btn_ = new QPushButton(tr("Detect field positions"), page);
+    detect_positions_btn_->setAccessibleName(tr("Detect field positions"));
+    detect_positions_btn_->setToolTip(
+        tr("Re-scan the PDF's form fields and match them to the schema by name"));
+    detect_positions_btn_->hide();
     actionRow->addWidget(detail_rename_btn_);
     actionRow->addWidget(detail_duplicate_btn_);
     actionRow->addWidget(markRegionBtn);
+    actionRow->addWidget(detect_positions_btn_);
     actionRow->addWidget(detail_delete_btn_);
     actionRow->addStretch(1);
     layout->addLayout(actionRow);
-
-    layout->addStretch(1);
 
     connect(detail_rename_btn_, &QPushButton::clicked,
             this, &MainWindow::onRenameTemplate);
@@ -289,6 +337,8 @@ void MainWindow::buildDetailPage(QWidget* page) {
             this, &MainWindow::onDeleteTemplate);
     connect(markRegionBtn, &QPushButton::clicked,
             this, &MainWindow::onMarkRegion);
+    connect(detect_positions_btn_, &QPushButton::clicked,
+            this, &MainWindow::onDetectFieldPositions);
 }
 
 void MainWindow::refreshTemplateList() {
@@ -421,6 +471,13 @@ void MainWindow::onTemplateSelected(int row) {
         tr("%n field(s) extracted", "", static_cast<int>(t.fields_.size())));
     detail_created_label_->setText(tr("Added:"));
     central_stack_->setCurrentIndex(1);
+
+    detect_positions_btn_->setVisible(
+        mondoc::hasExtension(t.source_path_, ".pdf") && anyFieldMissingLocation(t));
+
+    preview_loaded_ = false;
+    document_canvas_->hide();
+    startPreview(t.id_, t.source_path_);
 }
 
 void MainWindow::onSearchChanged(const QString& text) {
@@ -744,6 +801,15 @@ void MainWindow::onImportTemplate() {
 
 void MainWindow::onMarkRegion() {
     if (!selected_template_) return;
+
+    if (preview_loaded_) {
+        document_canvas_->setFocus();
+        statusBar()->showMessage(tr("Drag on the document to mark a field."));
+        return;
+    }
+
+    // No preview available (LibreOffice missing/failed, or the source is
+    // otherwise unrenderable) — fall back to the modal region marker.
     RegionMarkViewer dlg(selected_template_->source_path_,
                          QString::fromStdString(selected_template_->name_), this);
     if (dlg.exec() != QDialog::Accepted) return;
@@ -753,6 +819,208 @@ void MainWindow::onMarkRegion() {
     schema_widget_->populate(pending_template_.fields_);
     schema_widget_->addFieldExternal(dlg.field());
     schema_widget_->show();
+}
+
+void MainWindow::onDetectFieldPositions() {
+    if (!selected_template_) return;
+
+    mondoc::adapters::formats::PdfDocumentReader reader;
+    auto result = reader.read(selected_template_->source_path_);
+    if (!result) {
+        statusBar()->showMessage(
+            tr("Could not detect field positions: %1")
+                .arg(QString::fromStdString(result.error().message())), 5000);
+        return;
+    }
+
+    for (auto& field : selected_template_->fields_) {
+        for (const auto& scanned : result->fields_) {
+            if (scanned.name_ == field.name_ && scanned.location_) {
+                field.location_ = scanned.location_;
+                break;
+            }
+        }
+    }
+
+    auto saveResult = service_.saveTemplate(*selected_template_);
+    if (!saveResult) {
+        statusBar()->showMessage(
+            tr("Could not save detected positions: %1")
+                .arg(QString::fromStdString(saveResult.error().message())), 5000);
+        return;
+    }
+
+    statusBar()->showMessage(tr("Field positions updated."), 3000);
+    refreshTemplateList();
+}
+
+void MainWindow::startPreview(const mondoc::TemplateId& templateId,
+                              const std::filesystem::path& source) {
+    shutdownPreviewThread(/*mustJoin=*/false);
+    ++preview_generation_;
+    const int generation = preview_generation_;
+
+    const QSettings appSettings(QStringLiteral("MonDoc"), QStringLiteral("MonDoc"));
+    const QString overrideQs =
+        appSettings.value(QStringLiteral("libreoffice/path")).toString();
+    const std::filesystem::path sofficeOverride =
+        overrideQs.isEmpty() ? std::filesystem::path{} : qStringToPath(overrideQs);
+    const std::filesystem::path sofficePath =
+        mondoc::adapters::formats::findLibreOffice(sofficeOverride);
+    const std::filesystem::path cacheDir = data_dir_ / "previews";
+
+    preview_thread_ = new QThread(this);
+    preview_worker_ = new PreviewWorker(source, templateId.value(), cacheDir, sofficePath);
+    preview_worker_->moveToThread(preview_thread_);
+
+    connect(preview_thread_, &QThread::started, preview_worker_, &PreviewWorker::run);
+    connect(preview_worker_, &PreviewWorker::finished, this,
+            [this, generation](QString path, bool regenerated) {
+                handlePreviewFinished(generation, path, regenerated);
+            }, Qt::QueuedConnection);
+    connect(preview_worker_, &PreviewWorker::failed, this,
+            [this, generation](QString message) {
+                handlePreviewFailed(generation, message);
+            }, Qt::QueuedConnection);
+    connect(preview_worker_, &PreviewWorker::finished, preview_thread_, &QThread::quit);
+    connect(preview_worker_, &PreviewWorker::failed,   preview_thread_, &QThread::quit);
+    connect(preview_thread_, &QThread::finished, preview_worker_, &QObject::deleteLater);
+    connect(preview_thread_, &QThread::finished, preview_thread_, &QObject::deleteLater);
+    connect(preview_thread_, &QThread::finished, this, [this]() {
+        preview_thread_ = nullptr;
+        preview_worker_ = nullptr;
+    });
+
+    preview_thread_->start();
+}
+
+void MainWindow::shutdownPreviewThread(bool mustJoin) {
+    QThread* thread = preview_thread_;
+    if (!thread) return;
+
+    // Sever delivery to `this` before anything else: kills the
+    // finished->lambda that nulls preview_thread_/preview_worker_ and stops
+    // the worker's own finished/failed signals from reaching this window
+    // once shutdown has begun. Connections from the worker/thread to each
+    // other are left intact so an abandoned thread still exits and its
+    // finished->deleteLater cleanup still runs.
+    if (preview_worker_) preview_worker_->disconnect(this);
+    thread->disconnect(this);
+    preview_thread_ = nullptr;
+    preview_worker_ = nullptr;
+
+    if (!thread->isRunning()) return;
+
+    thread->quit();
+    if (thread->wait(5000)) return;
+
+    if (mustJoin) {
+        thread->wait();
+        return;
+    }
+
+    // PreviewWorker has no cancellation hook (a LibreOffice conversion can't
+    // be interrupted mid-flight): detach and let the existing
+    // finished/failed -> thread->quit and thread->finished -> deleteLater
+    // connections reap both objects once the conversion actually completes.
+    thread->setParent(nullptr);
+}
+
+void MainWindow::handlePreviewFinished(int generation, const QString& previewPdfPath,
+                                       bool regenerated) {
+    if (generation != preview_generation_) return;
+    if (!selected_template_) return;
+
+    current_preview_path_ = qStringToPath(previewPdfPath);
+    const bool hadLocatedFields = anyFieldLocated(*selected_template_);
+
+    if (!document_canvas_->loadDocument(current_preview_path_)) {
+        preview_loaded_ = false;
+        document_canvas_->hide();
+        statusBar()->showMessage(
+            tr("Preview unavailable: %1").arg(tr("the document could not be rendered")));
+        return;
+    }
+
+    preview_loaded_ = true;
+    pending_template_ = *selected_template_;
+    pending_document_text_.clear();
+    schema_widget_->setDocumentText(pending_document_text_);
+    schema_widget_->populate(pending_template_.fields_);
+
+    document_canvas_->show();
+    document_canvas_->setFrames(pending_template_.fields_);
+    document_canvas_->setStaleWarning(regenerated && hadLocatedFields);
+}
+
+void MainWindow::handlePreviewFailed(int generation, const QString& message) {
+    if (generation != preview_generation_) return;
+    preview_loaded_ = false;
+    document_canvas_->hide();
+    statusBar()->showMessage(tr("Preview unavailable: %1").arg(message));
+}
+
+std::optional<mondoc::domain::TextLocation> MainWindow::computeTextAnchor(
+        const mondoc::domain::PdfLocation& loc) const {
+    if (!selected_template_ || current_preview_path_.empty()) return std::nullopt;
+    auto text = mondoc::adapters::formats::extractPlainText(selected_template_->source_path_);
+    return mondoc::adapters::formats::anchorForPreviewRect(
+        current_preview_path_, loc, text.value_or(std::string{}));
+}
+
+void MainWindow::onCanvasFrameDrawn(mondoc::domain::PdfLocation loc) {
+    if (!selected_template_) return;
+
+    mondoc::domain::Field field;
+    field.id_ = mondoc::FieldId{mondoc::generateUuid()};
+    field.name_ = "field_" + std::to_string(pending_template_.fields_.size() + 1);
+    field.type_ = mondoc::domain::FieldType::Text;
+    field.origin_ = mondoc::domain::FieldOrigin::Unknown;
+
+    QString statusMsg = tr("Field marked.");
+    std::optional<mondoc::domain::TextLocation> anchor;
+    if (!mondoc::hasExtension(selected_template_->source_path_, ".pdf")) {
+        anchor = computeTextAnchor(loc);
+        if (!anchor) statusMsg += tr(" (no fill anchor)");
+    }
+    field.location_ = mondoc::domain::FieldLocation{loc, anchor};
+
+    schema_widget_->addFieldExternal(field);
+    pending_template_.fields_.push_back(field);
+    document_canvas_->setFrames(pending_template_.fields_);
+
+    schema_widget_->show();
+    schema_widget_->raise();
+    statusBar()->showMessage(statusMsg);
+}
+
+void MainWindow::onCanvasFrameSelected(mondoc::FieldId id) {
+    for (std::size_t row = 0; row < pending_template_.fields_.size(); ++row) {
+        if (pending_template_.fields_[row].id_ == id) {
+            schema_widget_->selectRow(static_cast<int>(row));
+            return;
+        }
+    }
+}
+
+void MainWindow::onCanvasFrameChanged(mondoc::FieldId id, mondoc::domain::PdfLocation loc) {
+    if (!selected_template_) return;
+    for (auto& field : pending_template_.fields_) {
+        if (field.id_ != id) continue;
+        std::optional<mondoc::domain::TextLocation> anchor;
+        if (!mondoc::hasExtension(selected_template_->source_path_, ".pdf")) {
+            anchor = computeTextAnchor(loc);
+        }
+        field.location_ = mondoc::domain::FieldLocation{loc, anchor};
+        schema_widget_->populate(pending_template_.fields_);
+        return;
+    }
+}
+
+void MainWindow::onSchemaRowSelected(int row) {
+    if (row < 0 || row >= static_cast<int>(pending_template_.fields_.size())) return;
+    document_canvas_->setSelectedField(
+        pending_template_.fields_[static_cast<std::size_t>(row)].id_);
 }
 
 void MainWindow::onAboutClicked() {

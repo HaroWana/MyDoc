@@ -20,11 +20,13 @@ signals:
 
 private slots:
     void onSave();
+    void onBrowseLibreOffice();
 
 private:
     QLineEdit* url_edit_;
     QLineEdit* key_edit_;
     QLineEdit* model_edit_;
+    QLineEdit* soffice_edit_;
     QLabel* helper_label_;
     QLabel* error_label_;
     QDialogButtonBox* buttons_;

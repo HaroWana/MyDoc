@@ -276,6 +276,7 @@ void SchemaDockWidget::addFieldExternal(const mondoc::domain::Field& field) {
     table_->insertRow(row);
     setNameItem(row, field);
     setTypeItem(row, field.type_);
+    if (field.location_) locations_[field.id_.value()] = *field.location_;
     table_->setCurrentCell(row, 0);
     onSelectionChanged();
 }
@@ -283,9 +284,11 @@ void SchemaDockWidget::addFieldExternal(const mondoc::domain::Field& field) {
 void SchemaDockWidget::populate(const std::vector<mondoc::domain::Field>& fields) {
     table_->clearContents();
     table_->setRowCount(static_cast<int>(fields.size()));
+    locations_.clear();
     for (int row = 0; row < static_cast<int>(fields.size()); ++row) {
         setNameItem(row, fields[row]);
         setTypeItem(row, fields[row].type_);
+        if (fields[row].location_) locations_[fields[row].id_.value()] = *fields[row].location_;
     }
     onSelectionChanged();
 }
@@ -305,11 +308,15 @@ std::vector<mondoc::domain::Field> SchemaDockWidget::currentFields() const {
         const std::string id = idStr.isEmpty() ? generateUuid() : idStr.toStdString();
         const int typeIdx = typeItem ? typeItem->data(Qt::EditRole).toInt() : 0;
 
-        result.push_back(mondoc::domain::Field{
+        mondoc::domain::Field field{
             mondoc::FieldId{id},
             name,
             indexToFieldType(typeIdx),
-        });
+        };
+        if (auto it = locations_.find(id); it != locations_.end()) {
+            field.location_ = it->second;
+        }
+        result.push_back(std::move(field));
     }
     return result;
 }
@@ -370,6 +377,13 @@ void SchemaDockWidget::onSelectionChanged() {
         : AiRowState::None;
     accept_proposal_btn_->setVisible(state != AiRowState::None);
     discard_proposal_btn_->setVisible(state != AiRowState::None);
+    if (!suppress_selection_signal_) emit rowSelected(row);
+}
+
+void SchemaDockWidget::selectRow(int row) {
+    suppress_selection_signal_ = true;
+    table_->setCurrentCell(row, 0);
+    suppress_selection_signal_ = false;
 }
 
 void SchemaDockWidget::restoreIdleButton() {
