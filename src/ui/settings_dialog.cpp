@@ -13,6 +13,8 @@
 #include <QThread>
 #include <QVBoxLayout>
 
+#include "llm_error.hpp"
+#include "llm_error_text.hpp"
 #include "model_list_worker.hpp"
 #include "mondoc/expected.hpp"
 #include "ui_style.hpp"
@@ -42,7 +44,7 @@ SettingsDialog::SettingsDialog(const mondoc::adapters::ai::LlmConfig& current,
     setMinimumWidth(420);
 
     url_edit_->setText(QString::fromStdString(current.api_url_));
-    url_edit_->setPlaceholderText(QStringLiteral("https://api.openai.com/v1"));
+    url_edit_->setPlaceholderText(QStringLiteral("https://api.openai.com"));
     url_edit_->setAccessibleName(tr("API URL"));
 
     key_edit_->setText(QString::fromStdString(current.api_key_));
@@ -156,8 +158,8 @@ void SettingsDialog::startModelFetch() {
                 onModelsFetched(generation, std::move(models));
             });
     connect(worker, &ModelListWorker::failed, this,
-            [this, generation](QString message) {
-                onModelsFailed(generation, std::move(message));
+            [this, generation](QString message, int errorKind) {
+                onModelsFailed(generation, std::move(message), errorKind);
             });
     connect(worker, &ModelListWorker::finished, thread, &QThread::quit);
     connect(worker, &ModelListWorker::failed, thread, &QThread::quit);
@@ -176,10 +178,29 @@ void SettingsDialog::onModelsFetched(int generation, QStringList models) {
     error_label_->setVisible(false);
 }
 
-void SettingsDialog::onModelsFailed(int generation, QString message) {
+void SettingsDialog::onModelsFailed(int generation, QString message, int errorKind) {
     finishModelsThread();
     if (generation != models_generation_) return;
-    error_label_->setText(tr("Could not fetch models: %1").arg(message));
+
+    const auto llmKind = static_cast<mondoc::adapters::ai::LlmError::Kind>(errorKind);
+    auto kind = mondoc::Error::Kind::BadResponse;
+    switch (llmKind) {
+        case mondoc::adapters::ai::LlmError::Kind::Unreachable:
+            kind = mondoc::Error::Kind::Unreachable;
+            break;
+        case mondoc::adapters::ai::LlmError::Kind::RateLimited:
+            kind = mondoc::Error::Kind::RateLimited;
+            break;
+        case mondoc::adapters::ai::LlmError::Kind::BadResponse:
+            kind = mondoc::Error::Kind::BadResponse;
+            break;
+        case mondoc::adapters::ai::LlmError::Kind::Cancelled:
+            kind = mondoc::Error::Kind::Cancelled;
+            break;
+    }
+
+    error_label_->setText(tr("Could not fetch models: %1")
+                               .arg(llmErrorText(mondoc::Error{kind, message.toStdString()})));
     error_label_->setVisible(true);
 }
 

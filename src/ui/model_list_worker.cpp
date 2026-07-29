@@ -13,12 +13,14 @@ ModelListWorker::ModelListWorker(std::string apiUrl, std::string apiKey,
 void ModelListWorker::run() {
     auto client = mondoc::adapters::ai::LlmClient::create(api_url_, api_key_);
     if (!client) {
-        emit failed(QString::fromStdString(client.error().message()));
+        emit failed(QString::fromStdString(client.error().message()),
+                    static_cast<int>(client.error().kind()));
         return;
     }
     auto models = (*client)->listModels();
     if (!models) {
-        emit failed(QString::fromStdString(models.error().message()));
+        emit failed(QString::fromStdString(models.error().message()),
+                    static_cast<int>(models.error().kind()));
         return;
     }
     QStringList out;

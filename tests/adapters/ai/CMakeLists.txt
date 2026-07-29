@@ -46,3 +46,4 @@ add_executable(tests_adapters_ai_llm_models test_llm_models.cpp)
 target_link_libraries(tests_adapters_ai_llm_models
     PRIVATE mondoc_adapters_ai Catch2::Catch2WithMain)
 add_test(NAME ai.llm_models COMMAND tests_adapters_ai_llm_models)
+set_tests_properties(ai.llm_models PROPERTIES LABELS phase06)

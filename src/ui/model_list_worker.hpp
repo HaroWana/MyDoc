@@ -17,7 +17,7 @@ public slots:
 
 signals:
     void finished(QStringList models);
-    void failed(QString message);
+    void failed(QString message, int errorKind);
 
 private:
     std::string api_url_;

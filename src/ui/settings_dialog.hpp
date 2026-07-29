@@ -28,7 +28,7 @@ private slots:
     void onBrowseLibreOffice();
     void onRefreshModels();
     void onModelsFetched(int generation, QStringList models);
-    void onModelsFailed(int generation, QString message);
+    void onModelsFailed(int generation, QString message, int errorKind);
 
 private:
     void startModelFetch();
