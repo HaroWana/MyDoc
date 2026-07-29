@@ -388,6 +388,30 @@ TEST_CASE("SqliteTemplateRepository: TextLocation range and excerpt round-trip",
     REQUIRE(text->excerpt == "hello sele");
 }
 
+TEST_CASE("SqliteTemplateRepository: co-resident pdf+text location round-trips",
+          "[storage.template_repo][visual-fill]") {
+    auto conn = SqliteConnection::open(":memory:");
+    REQUIRE(conn.has_value());
+    REQUIRE(runMigrations(*conn).has_value());
+    SqliteTemplateRepository repo(*conn);
+
+    auto t = makeTemplate("t1", "Dual");
+    auto f = makeField("f1", "spot");
+    mondoc::domain::PdfLocation pl{1, 0.1, 0.2, 0.3, 0.05};
+    mondoc::domain::TextLocation tl{2, 10, 25, "hello"};
+    f.location_ = mondoc::domain::FieldLocation{pl, tl};
+    t.fields_.push_back(std::move(f));
+    REQUIRE(repo.save(t).has_value());
+    auto back = repo.findById(mondoc::TemplateId{"t1"});
+    REQUIRE(back.has_value());
+    const auto& loc = back->fields_.at(0).location_;
+    REQUIRE(loc.has_value());
+    REQUIRE(loc->pdf.has_value());
+    REQUIRE(loc->text.has_value());
+    REQUIRE(loc->pdf->page_index == 1);
+    REQUIRE(loc->text->char_end == 25);
+}
+
 TEST_CASE("SqliteTemplateRepository: legacy location_json without char_end parses",
           "[storage.template_repo][ui-8]") {
     auto conn = SqliteConnection::open(":memory:");

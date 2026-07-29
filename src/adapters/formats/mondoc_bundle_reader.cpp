@@ -45,6 +45,25 @@ mondoc::domain::FieldOrigin stringToFieldOrigin(std::string_view s) {
     return FieldOrigin::Unknown;
 }
 
+mondoc::domain::PdfLocation pdfFromJson(const nlohmann::json& j) {
+    mondoc::domain::PdfLocation pdf{};
+    pdf.page_index = j.value("page_index", 0);
+    pdf.x = j.value("x", 0.0);
+    pdf.y = j.value("y", 0.0);
+    pdf.w = j.value("w", 0.0);
+    pdf.h = j.value("h", 0.0);
+    return pdf;
+}
+
+mondoc::domain::TextLocation textFromJson(const nlohmann::json& j) {
+    mondoc::domain::TextLocation tx{};
+    tx.paragraph_index = j.value("paragraph_index", 0);
+    tx.char_offset = j.value("char_offset", 0);
+    tx.char_end = j.value("char_end", 0);
+    tx.excerpt = j.value("excerpt", std::string{});
+    return tx;
+}
+
 std::optional<mondoc::domain::FieldLocation>
 locationFromJson(const nlohmann::json& j) {
     if (j.is_null() || !j.is_object()) return std::nullopt;
@@ -53,22 +72,16 @@ locationFromJson(const nlohmann::json& j) {
 
     mondoc::domain::FieldLocation loc{};
     if (type == "pdf") {
-        mondoc::domain::PdfLocation pdf{};
-        pdf.page_index = j.value("page_index", 0);
-        pdf.x = j.value("x", 0.0);
-        pdf.y = j.value("y", 0.0);
-        pdf.w = j.value("w", 0.0);
-        pdf.h = j.value("h", 0.0);
-        loc.pdf = pdf;
+        loc.pdf = pdfFromJson(j);
         return loc;
     }
     if (type == "text") {
-        mondoc::domain::TextLocation tx{};
-        tx.paragraph_index = j.value("paragraph_index", 0);
-        tx.char_offset = j.value("char_offset", 0);
-        tx.char_end = j.value("char_end", 0);
-        tx.excerpt = j.value("excerpt", std::string{});
-        loc.text = tx;
+        loc.text = textFromJson(j);
+        return loc;
+    }
+    if (type == "both") {
+        loc.pdf = pdfFromJson(j["pdf"]);
+        loc.text = textFromJson(j["text"]);
         return loc;
     }
     return std::nullopt;

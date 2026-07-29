@@ -275,6 +275,39 @@ TEST_CASE("MondocBundle: TextLocation range and excerpt round-trip through bundl
     REQUIRE(loc->text->excerpt == "excerpt");
 }
 
+TEST_CASE("MondocBundle: co-resident pdf+text location round-trips through bundle [adapters.formats.mondoc][visual-fill]") {
+    TempSourceFile src{"mondoc_dualloc_source.txt"};
+    Template tpl;
+    tpl.id_ = mondoc::TemplateId{"dualloc-tpl"};
+    tpl.name_ = "Dual Location Template";
+    tpl.source_format_ = "txt";
+    tpl.source_path_ = src.path;
+    Field f;
+    f.id_ = mondoc::FieldId{"dualloc-field"};
+    f.name_ = "spot";
+    f.type_ = FieldType::Text;
+    f.origin_ = FieldOrigin::Unknown;
+    PdfLocation pdfLoc{1, 0.1, 0.2, 0.3, 0.05};
+    mondoc::domain::TextLocation tl{2, 10, 25, "hello"};
+    f.location_ = FieldLocation{pdfLoc, tl};
+    tpl.fields_.push_back(f);
+
+    TempFile out{tempBundlePath("dualloc_rt")};
+    MondocBundleWriter writer;
+    REQUIRE(writer.write(tpl, out.path).has_value());
+
+    MondocBundleReader reader;
+    auto result = reader.read(out.path);
+    REQUIRE(result.has_value());
+    REQUIRE(result->fields_.size() == 1);
+    const auto& loc = result->fields_[0].location_;
+    REQUIRE(loc.has_value());
+    REQUIRE(loc->pdf.has_value());
+    REQUIRE(loc->text.has_value());
+    REQUIRE(loc->pdf->page_index == 1);
+    REQUIRE(loc->text->char_end == 25);
+}
+
 TEST_CASE("MondocBundle: FieldOrigin::Ai round-trips through bundle [adapters.formats.mondoc]") {
     TempSourceFile src{"mondoc_ai_origin_source.txt"};
     Template tpl;
