@@ -11,6 +11,7 @@ add_library(mondoc_ui STATIC
     fill_session_view.cpp
     import_conflict_dialog.cpp
     main_window.cpp
+    preview_worker.cpp
     region_mark_viewer.cpp
     resume_banner.cpp
     schema_dock_widget.cpp
