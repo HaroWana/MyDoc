@@ -35,6 +35,13 @@ bool isConvertible(std::string_view ext) {
 }
 
 #if defined(_WIN32)
+// cmd.exe expands %, ^, & etc. even inside double quotes; reject rather
+// than attempt escaping (Linux-first — the POSIX path spawns without a
+// shell and needs no such guard).
+bool containsCmdMetachar(const std::string& s) {
+    return s.find_first_of("\"%^&|<>!") != std::string::npos;
+}
+
 std::string quoted(const std::filesystem::path& p) {
     return "\"" + mondoc::pathToUtf8(p) + "\"";
 }
@@ -188,9 +195,16 @@ previewPdfFor(const std::filesystem::path& source,
     const std::filesystem::path profileDir = cacheDir / ("lo-profile-" + templateId);
 
 #if defined(_WIN32)
-    // Still shells out via _popen/cmd.exe on Windows: source filenames with
-    // shell metacharacters are not sanitized on this path (Linux-first; the
-    // POSIX path below uses posix_spawnp with an argv vector, no shell).
+    // Still shells out via _popen/cmd.exe on Windows (Linux-first; the POSIX
+    // path below uses posix_spawnp with an argv vector, no shell) — so every
+    // string entering the command line must be free of cmd metacharacters.
+    for (const std::filesystem::path& p : {input, cacheDir, sofficePath, profileDir}) {
+        if (containsCmdMetachar(mondoc::pathToUtf8(p))) {
+            return mondoc::unexpected(mondoc::Error::invalidArgument(
+                "path contains characters unsafe for the Windows shell: " +
+                mondoc::pathToUtf8(p)));
+        }
+    }
     const std::string cmd =
         quoted(sofficePath) + " --headless --norestore " +
         quoted(std::string{"-env:UserInstallation=file://"} + mondoc::pathToUtf8(profileDir)) +
