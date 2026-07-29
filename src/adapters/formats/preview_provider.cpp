@@ -5,17 +5,24 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <array>
 #include <cctype>
-#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <array>
+#include <cstdio>
+#else
+#include <fcntl.h>
+#include <spawn.h>
 #include <sys/wait.h>
+#include <unistd.h>
+
+extern char** environ;
 #endif
 
 namespace mondoc::adapters::formats {
@@ -27,27 +34,7 @@ bool isConvertible(std::string_view ext) {
     return ext == ".docx" || ext == ".odt" || ext == ".txt" || ext == ".md";
 }
 
-int runCommand(const std::string& cmd) {
 #if defined(_WIN32)
-    FILE* pipe = _popen(cmd.c_str(), "r");
-#else
-    FILE* pipe = popen(cmd.c_str(), "r");
-#endif
-    if (!pipe) return -1;
-    std::array<char, 256> buf{};
-    while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
-        // discard output
-    }
-#if defined(_WIN32)
-    int status = _pclose(pipe);
-    return status;
-#else
-    int status = pclose(pipe);
-    if (status == -1) return -1;
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-#endif
-}
-
 std::string quoted(const std::filesystem::path& p) {
     return "\"" + mondoc::pathToUtf8(p) + "\"";
 }
@@ -56,13 +43,42 @@ std::string quoted(const std::string& s) {
     return "\"" + s + "\"";
 }
 
-bool containsQuote(const std::filesystem::path& p) {
-    return mondoc::pathToUtf8(p).find('"') != std::string::npos;
+int runCommand(const std::string& cmd) {
+    FILE* pipe = _popen(cmd.c_str(), "r");
+    if (!pipe) return -1;
+    std::array<char, 256> buf{};
+    while (fgets(buf.data(), buf.size(), pipe) != nullptr) {
+        // discard output
+    }
+    return _pclose(pipe);
 }
+#else
+// No shell involved: argv is handed straight to the child, so filenames with
+// shell metacharacters (backticks, `$`, quotes, ...) can't be interpreted.
+int runSoffice(const std::vector<std::string>& args) {
+    std::vector<char*> argv;
+    argv.reserve(args.size() + 1);
+    for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
+    argv.push_back(nullptr);
 
-// Template ids are UUIDs in practice; this allowlist also rules out shell
-// metacharacters (the id is interpolated into a popen'd command) and path
-// traversal (the id becomes a path segment under cacheDir).
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+
+    pid_t pid = 0;
+    const int spawnRc = posix_spawnp(&pid, argv[0], &actions, nullptr, argv.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    if (spawnRc != 0) return -1;
+
+    int status = 0;
+    if (waitpid(pid, &status, 0) == -1) return -1;
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+#endif
+
+// Template ids are UUIDs in practice; this allowlist also rules out
+// path traversal (the id becomes a path segment under cacheDir).
 bool isValidTemplateId(const std::string& id) {
     if (id.empty() || id.find("..") != std::string::npos) return false;
     return std::all_of(id.begin(), id.end(), [](unsigned char c) {
@@ -117,10 +133,6 @@ previewPdfFor(const std::filesystem::path& source,
             "unsupported preview source extension: " + ext));
     }
 
-    if (containsQuote(source) || containsQuote(cacheDir) || containsQuote(sofficePath)) {
-        return mondoc::unexpected(mondoc::Error::invalidArgument(
-            "path must not contain a double quote"));
-    }
     if (!isValidTemplateId(templateId)) {
         return mondoc::unexpected(mondoc::Error::invalidArgument(
             "templateId must be non-empty and contain only letters, digits, '.', '_', '-'"));
@@ -175,17 +187,27 @@ previewPdfFor(const std::filesystem::path& source,
 
     const std::filesystem::path profileDir = cacheDir / ("lo-profile-" + templateId);
 
-    std::string cmd;
-#if !defined(_WIN32)
-    cmd += "timeout " + std::to_string(kConvertTimeoutSeconds) + " ";
-#endif
-    cmd += quoted(sofficePath) +
-           " --headless --norestore " +
-           quoted(std::string{"-env:UserInstallation=file://"} + mondoc::pathToUtf8(profileDir)) +
-           " --convert-to pdf --outdir " + quoted(cacheDir) + " " + quoted(input) +
-           " >/dev/null 2>&1";
-
+#if defined(_WIN32)
+    // Still shells out via _popen/cmd.exe on Windows: source filenames with
+    // shell metacharacters are not sanitized on this path (Linux-first; the
+    // POSIX path below uses posix_spawnp with an argv vector, no shell).
+    const std::string cmd =
+        quoted(sofficePath) + " --headless --norestore " +
+        quoted(std::string{"-env:UserInstallation=file://"} + mondoc::pathToUtf8(profileDir)) +
+        " --convert-to pdf --outdir " + quoted(cacheDir) + " " + quoted(input);
     const int exitCode = runCommand(cmd);
+#else
+    const std::vector<std::string> args = {
+        "timeout", std::to_string(kConvertTimeoutSeconds),
+        mondoc::pathToUtf8(sofficePath),
+        "--headless", "--norestore",
+        "-env:UserInstallation=file://" + mondoc::pathToUtf8(profileDir),
+        "--convert-to", "pdf",
+        "--outdir", mondoc::pathToUtf8(cacheDir),
+        mondoc::pathToUtf8(input),
+    };
+    const int exitCode = runSoffice(args);
+#endif
 
     const std::filesystem::path convertedPdf = cacheDir / (input.stem().string() + ".pdf");
     if (exitCode != 0 || !std::filesystem::exists(convertedPdf, ec)) {

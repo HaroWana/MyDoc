@@ -90,6 +90,32 @@ TEST_CASE("previewPdfFor: cache hit works when cacheDir contains a space", "[for
     std::filesystem::remove_all(cacheDir, ec);
 }
 
+TEST_CASE("previewPdfFor: cache hit works when source filename has shell metacharacters",
+          "[formats.preview]") {
+    const auto srcDir = uniqueTempPath("");
+    std::filesystem::create_directories(srcDir);
+    const auto srcPath = srcDir / "invoice`id`$(whoami).txt";
+    writeFile(srcPath, "hello");
+    const auto cacheDir = uniqueTempPath("");
+    std::filesystem::create_directories(cacheDir);
+    writeFile(cacheDir / "tpl1.pdf", "%PDF-1.4 cached\n");
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(srcPath, ec);
+    const auto mtime = std::filesystem::last_write_time(srcPath, ec)
+                           .time_since_epoch().count();
+    nlohmann::json sidecar{{"size", size}, {"mtime", mtime}};
+    writeFile(cacheDir / "tpl1.json", sidecar.dump());
+
+    // sofficePath deliberately bogus: a cache hit must not invoke it, so a
+    // filename with `, $, or backslash metacharacters can't reach a shell.
+    auto r = previewPdfFor(srcPath, "tpl1", cacheDir, "/nonexistent/soffice");
+    REQUIRE(r.has_value());
+    REQUIRE(r->pdf_ == cacheDir / "tpl1.pdf");
+    REQUIRE_FALSE(r->regenerated_);
+    std::filesystem::remove_all(srcDir, ec);
+    std::filesystem::remove_all(cacheDir, ec);
+}
+
 TEST_CASE("previewPdfFor: missing soffice on a cold cache is a clear error", "[formats.preview]") {
     TempFile src{uniqueTempPath(".txt")};
     writeFile(src.path, "hello");
