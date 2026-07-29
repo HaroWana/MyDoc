@@ -28,6 +28,16 @@ mondoc::Error llmErrorToError(const mondoc::adapters::ai::LlmError& e) {
 
 }  // namespace
 
+std::string_view exportFormatExtension(ExportFormat format) noexcept {
+    switch (format) {
+        case ExportFormat::Docx: return ".docx";
+        case ExportFormat::Pdf:  return ".pdf";
+        case ExportFormat::Text: return ".txt";
+        case ExportFormat::Odt:  return ".odt";
+    }
+    return "";
+}
+
 FillSessionService::FillSessionService(
     mondoc::domain::IFillSessionRepository& sessionRepo,
     mondoc::domain::ITemplateRepository& templateRepo,
@@ -211,14 +221,8 @@ FillSessionService::exportSession(const mondoc::FillSessionId& id,
     auto tpl = template_repo_.findById(session->template_id_);
     if (!tpl) return mondoc::unexpected(tpl.error());
 
-    std::string_view ext;
-    switch (format) {
-        case ExportFormat::Docx: ext = ".docx"; break;
-        case ExportFormat::Pdf:  ext = ".pdf";  break;
-        case ExportFormat::Text: ext = ".txt";  break;
-        case ExportFormat::Odt:  ext = ".odt";  break;
-    }
-    auto writer = mondoc::adapters::formats::writerForExtension(ext);
+    auto writer = mondoc::adapters::formats::writerForExtension(
+        exportFormatExtension(format));
     if (!writer) {
         return mondoc::unexpected(
             mondoc::Error::invalidArgument("unsupported format"));

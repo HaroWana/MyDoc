@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "domain/ai_input.hpp"
@@ -21,6 +22,10 @@ namespace mondoc::adapters::ai { class AiFillPipeline; }
 namespace mondoc::services {
 
 enum class ExportFormat { Docx, Pdf, Text, Odt };
+
+// Single owner of the ExportFormat → file-extension mapping; the export
+// dialog's suffix handling and the writer selection must agree.
+std::string_view exportFormatExtension(ExportFormat format) noexcept;
 
 enum class AiFailureKind { Cancelled, Unreachable, RateLimited, BadResponse };
 

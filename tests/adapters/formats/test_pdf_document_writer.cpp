@@ -224,3 +224,59 @@ TEST_CASE("PdfDocumentWriter: non-WinAnsi characters do not fail the export",
     REQUIRE(contains(text, "hello"));
     REQUIRE(contains(text, "?"));
 }
+
+TEST_CASE("PdfDocumentWriter: pre-existing dest survives a failed final rename",
+          "[formats.pdf_writer][fmt-19]") {
+    // dest is an existing DIRECTORY: Save to the temp file succeeds, the
+    // rename into place fails, and nothing pre-existing may be destroyed.
+    const auto dest = uniqueTempPath("");
+    std::filesystem::create_directories(dest);
+
+    Template tpl;
+    tpl.id_ = TemplateId{"t1"};
+    tpl.name_ = "Doomed";
+    std::vector<Fill> fills{{FieldId{"f1"}, "x", {}}};
+
+    auto result = PdfDocumentWriter{}.write(tpl, fills, dest);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(std::filesystem::is_directory(dest));
+
+    auto tmpLeftover = dest;
+    tmpLeftover += ".mondoc-tmp";
+    REQUIRE_FALSE(std::filesystem::exists(tmpLeftover));
+
+    std::error_code ec;
+    std::filesystem::remove_all(dest, ec);
+}
+
+TEST_CASE("PdfDocumentWriter: non-UTF-8 bytes in the template name are substituted",
+          "[formats.pdf_writer][fmt-19]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    Template tpl;
+    tpl.id_ = TemplateId{"t1"};
+    tpl.name_ = "Factur\xE9 latin1";  // raw Latin-1 0xE9: invalid UTF-8
+    std::vector<Fill> fills{{FieldId{"f1"}, "x", {}}};
+
+    auto result = PdfDocumentWriter{}.write(tpl, fills, tmp.path);
+    REQUIRE(result.has_value());
+    const std::string text = extractAllText(tmp.path);
+    REQUIRE(contains(text, "Factur?"));
+    REQUIRE(contains(text, "latin1"));
+}
+
+TEST_CASE("PdfDocumentWriter: unbroken multi-byte token hard-splits on code-point boundaries",
+          "[formats.pdf_writer][fmt-19]") {
+    TempFile tmp{uniqueTempPath(".pdf")};
+    Template tpl;
+    tpl.id_ = TemplateId{"t1"};
+    tpl.name_ = "Accents";
+    tpl.fields_.push_back({FieldId{"f1"}, "ref", FieldType::Text});
+    std::string token;
+    for (int i = 0; i < 300; ++i) token += "\xC3\xA9";  // 300 x 'é', one word
+    std::vector<Fill> fills{{FieldId{"f1"}, token, {}}};
+
+    auto result = PdfDocumentWriter{}.write(tpl, fills, tmp.path);
+    REQUIRE(result.has_value());
+    const std::string text = extractAllText(tmp.path);
+    REQUIRE(contains(text, "\xC3\xA9\xC3\xA9\xC3\xA9"));
+}

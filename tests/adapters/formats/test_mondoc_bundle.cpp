@@ -274,3 +274,28 @@ TEST_CASE("MondocBundle: TextLocation range and excerpt round-trip through bundl
     REQUIRE(loc->text->char_end == 12);
     REQUIRE(loc->text->excerpt == "excerpt");
 }
+
+TEST_CASE("MondocBundle: FieldOrigin::Ai round-trips through bundle [adapters.formats.mondoc]") {
+    TempSourceFile src{"mondoc_ai_origin_source.txt"};
+    Template tpl;
+    tpl.id_ = mondoc::TemplateId{"ai-tpl"};
+    tpl.name_ = "Ai Origin";
+    tpl.source_format_ = "txt";
+    tpl.source_path_ = src.path;
+    Field f;
+    f.id_ = mondoc::FieldId{"ai-field"};
+    f.name_ = "detected";
+    f.type_ = FieldType::Text;
+    f.origin_ = FieldOrigin::Ai;
+    tpl.fields_.push_back(f);
+
+    TempFile out{tempBundlePath("ai_origin_rt")};
+    MondocBundleWriter writer;
+    REQUIRE(writer.write(tpl, out.path).has_value());
+
+    MondocBundleReader reader;
+    auto result = reader.read(out.path);
+    REQUIRE(result.has_value());
+    REQUIRE(result->fields_.size() == 1);
+    REQUIRE(result->fields_[0].origin_ == FieldOrigin::Ai);
+}

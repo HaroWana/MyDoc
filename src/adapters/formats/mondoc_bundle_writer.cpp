@@ -56,6 +56,7 @@ std::string fieldOriginToStr(mondoc::domain::FieldOrigin o) {
     switch (o) {
         case FieldOrigin::FormControl: return "form_control";
         case FieldOrigin::Placeholder: return "placeholder";
+        case FieldOrigin::Ai:          return "ai";
         case FieldOrigin::Unknown:     return "unknown";
     }
     return "unknown";

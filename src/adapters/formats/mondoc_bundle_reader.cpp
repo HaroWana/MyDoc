@@ -41,6 +41,7 @@ mondoc::domain::FieldOrigin stringToFieldOrigin(std::string_view s) {
     using mondoc::domain::FieldOrigin;
     if (s == "form_control") return FieldOrigin::FormControl;
     if (s == "placeholder")  return FieldOrigin::Placeholder;
+    if (s == "ai")           return FieldOrigin::Ai;
     return FieldOrigin::Unknown;
 }
 

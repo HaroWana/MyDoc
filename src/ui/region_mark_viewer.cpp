@@ -342,6 +342,11 @@ void RegionMarkViewer::onConfirmRegion() {
     type_combo_->setVisible(true);
     save_field_btn_->setVisible(true);
     confirm_region_btn_->setVisible(false);
+    // Page navigation would silently discard the confirmed region
+    // (renderPdfPage clears pending_location_) — lock it during naming.
+    prev_page_btn_->setVisible(false);
+    next_page_btn_->setVisible(false);
+    page_indicator_->setVisible(false);
     name_edit_->setFocus();
 }
 

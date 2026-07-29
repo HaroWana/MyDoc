@@ -104,9 +104,10 @@ PdfDocumentReader::read(const std::filesystem::path& path) {
         if (ec) t.source_path_ = path;
         if (acroForm->GetDictionary().HasKey("XFA")) {
             t.warnings_.push_back(
-                "This PDF contains a hybrid XFA form. MonDoc fills its standard "
-                "(AcroForm) fields, but viewers that render the XFA layer, such "
-                "as Adobe Acrobat, may not display the filled values.");
+                "This PDF contains a hybrid XFA form. MonDoc reads only its "
+                "standard (AcroForm) field definitions; the XFA layer is "
+                "ignored, and exports are generated as a new document rather "
+                "than a filled copy of this form.");
         }
         return t;
 

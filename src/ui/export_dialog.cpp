@@ -19,15 +19,14 @@ namespace {
 struct FormatEntry {
     mondoc::services::ExportFormat format;
     const char* label;
-    const char* extension;
     const char* filter;
 };
 
 const FormatEntry kFormats[] = {
-    {mondoc::services::ExportFormat::Docx,     "DOCX",       ".docx", "DOCX (*.docx)"},
-    {mondoc::services::ExportFormat::Pdf,      "PDF",        ".pdf",  "PDF (*.pdf)"},
-    {mondoc::services::ExportFormat::Text,     "Plain Text", ".txt",  "Text (*.txt *.md)"},
-    {mondoc::services::ExportFormat::Odt,      "ODT",        ".odt",  "ODT (*.odt)"},
+    {mondoc::services::ExportFormat::Docx,     "DOCX",       "DOCX (*.docx)"},
+    {mondoc::services::ExportFormat::Pdf,      "PDF",        "PDF (*.pdf)"},
+    {mondoc::services::ExportFormat::Text,     "Plain Text", "Text (*.txt *.md)"},
+    {mondoc::services::ExportFormat::Odt,      "ODT",        "ODT (*.odt)"},
 };
 
 }  // namespace
@@ -100,8 +99,11 @@ void ExportDialog::onBrowse() {
 
 void ExportDialog::onFormatChanged(int) {
     const auto& f = kFormats[format_combo_->currentIndex()];
+    const auto ext = mondoc::services::exportFormatExtension(f.format);
+    const QString suffix = QString::fromLatin1(ext.data(),
+                                               static_cast<qsizetype>(ext.size()));
     if (!dest_edit_->text().isEmpty() &&
-        !dest_edit_->text().endsWith(QString::fromUtf8(f.extension), Qt::CaseInsensitive)) {
+        !dest_edit_->text().endsWith(suffix, Qt::CaseInsensitive)) {
         dest_edit_->clear();
     }
     updateOkEnabled();

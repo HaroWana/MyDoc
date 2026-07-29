@@ -23,12 +23,25 @@ findField(const mondoc::domain::Template& tpl, const mondoc::FieldId& id) {
     return it == tpl.fields_.end() ? nullptr : &*it;
 }
 
-// Replaces every code point the font's encoding cannot represent with '?',
-// so exports never fail on non-WinAnsi input (FMT-19).
+// PoDoFo's TryConvertToEncoded throws on invalid UTF-8 despite its name, so
+// the check must also treat an exception as "not encodable".
+bool encodable(const PoDoFo::PdfEncoding& enc, const std::string& s,
+               PoDoFo::charbuff& buf) {
+    buf.clear();
+    try {
+        return enc.TryConvertToEncoded(s, buf);
+    } catch (...) {
+        return false;
+    }
+}
+
+// Replaces every code point the font's encoding cannot represent — and any
+// invalid UTF-8 byte — with '?', so exports never fail on non-WinAnsi or
+// non-UTF-8 input (FMT-19).
 std::string substituteUnencodable(const PoDoFo::PdfFont& font, const std::string& text) {
     const auto& enc = font.GetEncoding();
     PoDoFo::charbuff buf;
-    if (enc.TryConvertToEncoded(text, buf)) return text;
+    if (encodable(enc, text, buf)) return text;
     std::string out;
     std::size_t i = 0;
     while (i < text.size()) {
@@ -38,9 +51,16 @@ std::string substituteUnencodable(const PoDoFo::PdfFont& font, const std::string
         else if ((c & 0xF0) == 0xE0) len = 3;
         else if ((c & 0xF8) == 0xF0) len = 4;
         len = std::min(len, text.size() - i);
+        // An invalid lead byte must not swallow the valid characters after
+        // it: only consume bytes that really are continuations.
+        for (std::size_t k = 1; k < len; ++k) {
+            if ((static_cast<unsigned char>(text[i + k]) & 0xC0) != 0x80) {
+                len = k;
+                break;
+            }
+        }
         const std::string cp = text.substr(i, len);
-        buf.clear();
-        out += enc.TryConvertToEncoded(cp, buf) ? cp : std::string{"?"};
+        out += encodable(enc, cp, buf) ? cp : std::string{"?"};
         i += len;
     }
     return out;
@@ -58,13 +78,21 @@ std::vector<std::string> wrapText(const PoDoFo::PdfFont& font,
         std::istringstream words(paragraph);
         std::string word;
         while (words >> word) {
-            while (font.GetStringLength(word, state) > maxWidth && word.size() > 1) {
-                std::size_t cut = word.size() - 1;
-                while (cut > 1 && font.GetStringLength(word.substr(0, cut), state) > maxWidth)
-                    --cut;
-                while (cut < word.size() &&
+            // Hard-split words that alone exceed the line width. Candidate cut
+            // points always land on a UTF-8 code-point boundary BEFORE being
+            // measured — PoDoFo throws on mid-sequence prefixes.
+            auto alignBack = [&word](std::size_t cut) {
+                while (cut > 1 &&
                        (static_cast<unsigned char>(word[cut]) & 0xC0) == 0x80)
-                    ++cut;  // never split inside a UTF-8 sequence
+                    --cut;
+                return cut;
+            };
+            while (font.GetStringLength(word, state) > maxWidth && word.size() > 1) {
+                std::size_t cut = alignBack(word.size() - 1);
+                while (cut > 1 &&
+                       font.GetStringLength(word.substr(0, cut), state) > maxWidth) {
+                    cut = alignBack(cut - 1);
+                }
                 if (!current.empty()) {
                     lines.push_back(current);
                     current.clear();
@@ -92,7 +120,10 @@ mondoc::expected<void, mondoc::Error>
 PdfDocumentWriter::write(const mondoc::domain::Template& tpl,
                          const std::vector<mondoc::domain::Fill>& fills,
                          const std::filesystem::path& dest) {
-    bool destWritten = false;
+    // Save to a sibling temp file and rename into place: a failed Save can
+    // never destroy a pre-existing dest, and a partial write never lands there.
+    std::filesystem::path tmpPath = dest;
+    tmpPath += ".mondoc-tmp";
     try {
         PoDoFo::PdfMemDocument document;
         auto& page = document.GetPages().CreatePage(
@@ -157,21 +188,24 @@ PdfDocumentWriter::write(const mondoc::domain::Template& tpl,
         }
 
         painter.FinishDrawing();
-        destWritten = true;
-        document.Save(pathToUtf8(dest));
+        document.Save(pathToUtf8(tmpPath));
+        std::error_code renameEc;
+        std::filesystem::rename(tmpPath, dest, renameEc);
+        if (renameEc) {
+            std::error_code rmEc;
+            std::filesystem::remove(tmpPath, rmEc);
+            return mondoc::unexpected(mondoc::Error::generic(
+                "cannot move exported file into place: " + renameEc.message()));
+        }
         return {};
     } catch (const PoDoFo::PdfError& e) {
-        if (destWritten) {
-            std::error_code ec;
-            std::filesystem::remove(dest, ec);
-        }
+        std::error_code ec;
+        std::filesystem::remove(tmpPath, ec);
         return mondoc::unexpected(mondoc::Error::generic(
             std::string{"podofo: "} + e.what()));
     } catch (const std::exception& e) {
-        if (destWritten) {
-            std::error_code ec;
-            std::filesystem::remove(dest, ec);
-        }
+        std::error_code ec;
+        std::filesystem::remove(tmpPath, ec);
         return mondoc::unexpected(mondoc::Error::generic(
             std::string{"podofo: "} + e.what()));
     }

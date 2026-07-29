@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -18,6 +19,10 @@
 namespace mondoc::adapters::storage {
 
 namespace {
+
+// Single owner of the "draft" status set; every listDrafts query must agree.
+constexpr std::string_view kDraftStatusPredicate =
+    "s.status IN ('Created','Reviewing')";
 
 std::string fillStatusToString(mondoc::domain::FillStatus s) {
     using mondoc::domain::FillStatus;
@@ -222,8 +227,8 @@ SqliteFillSessionRepository::listDrafts() {
         {
             SQLite::Statement q(db,
                 "SELECT id, template_id, status, created_at, updated_at"
-                " FROM fill_sessions"
-                " WHERE status IN ('Created','Reviewing')"
+                " FROM fill_sessions s"
+                " WHERE " + std::string{kDraftStatusPredicate} +
                 " ORDER BY updated_at DESC");
             while (q.executeStep()) {
                 mondoc::domain::FillSession s;
@@ -243,7 +248,7 @@ SqliteFillSessionRepository::listDrafts() {
         SQLite::Statement qv(db,
             "SELECT v.field_id, v.value, v.confidence, v.session_id"
             " FROM fill_values v JOIN fill_sessions s ON s.id = v.session_id"
-            " WHERE s.status IN ('Created','Reviewing')"
+            " WHERE " + std::string{kDraftStatusPredicate} +
             " ORDER BY v.session_id, v.field_id ASC");
         while (qv.executeStep()) {
             auto it = indexById.find(qv.getColumn(3).getString());
@@ -254,7 +259,7 @@ SqliteFillSessionRepository::listDrafts() {
         SQLite::Statement qr(db,
             "SELECT r.field_id, r.source_id, r.char_start, r.char_end, r.excerpt, r.session_id"
             " FROM fill_source_refs r JOIN fill_sessions s ON s.id = r.session_id"
-            " WHERE s.status IN ('Created','Reviewing')"
+            " WHERE " + std::string{kDraftStatusPredicate} +
             " ORDER BY r.session_id, r.field_id, r.ref_order");
         while (qr.executeStep()) {
             auto it = indexById.find(qr.getColumn(5).getString());
