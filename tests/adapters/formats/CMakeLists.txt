@@ -1,3 +1,5 @@
+find_package(nlohmann_json CONFIG REQUIRED)
+
 add_executable(tests_adapters_formats_docx test_docx_reader.cpp)
 target_link_libraries(tests_adapters_formats_docx
     PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
@@ -70,3 +72,9 @@ add_executable(tests_adapters_formats_registry test_format_registry.cpp)
 target_link_libraries(tests_adapters_formats_registry
     PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
 add_test(NAME formats.registry COMMAND tests_adapters_formats_registry)
+
+add_executable(tests_adapters_formats_preview_provider test_preview_provider.cpp)
+target_link_libraries(tests_adapters_formats_preview_provider
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain
+            nlohmann_json::nlohmann_json)
+add_test(NAME formats.preview COMMAND tests_adapters_formats_preview_provider)
