@@ -2,6 +2,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "i_llm_client.hpp"
 #include "llm_error.hpp"
@@ -20,6 +21,15 @@ public:
 
     mondoc::expected<std::string, LlmError>
     chat(const std::string& body, const std::atomic<bool>* cancelled = nullptr) override;
+
+    mondoc::expected<std::vector<std::string>, LlmError>
+    listModels(const std::atomic<bool>* cancelled = nullptr) override;
+
+    // Visible for testing: parses {"data":[{"id":"..."},...]}. Entries
+    // without a string "id" are skipped; malformed JSON or missing/non-array
+    // "data" is badResponse. Result sorted alphabetically.
+    static mondoc::expected<std::vector<std::string>, LlmError>
+    parseModelsResponse(const std::string& body);
 
     static LlmError classifyHttpStatus(int status, std::string bodyTrunc);
 

@@ -1,6 +1,7 @@
 #include "llm_client.hpp"
 
 #include <httplib.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -9,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace mondoc::adapters::ai {
 
@@ -124,6 +126,75 @@ LlmClient::chat(const std::string& body, const std::atomic<bool>* cancelled) {
         0, std::min<std::size_t>(256, responseBody.size()));
     return mondoc::unexpected(
         classifyHttpStatus(res->status, std::move(trunc)));
+}
+
+mondoc::expected<std::vector<std::string>, LlmError>
+LlmClient::parseModelsResponse(const std::string& body) {
+    try {
+        const auto doc = nlohmann::json::parse(body);
+        if (!doc.contains("data") || !doc["data"].is_array()) {
+            return mondoc::unexpected(
+                LlmError::badResponse("models response has no data array"));
+        }
+        std::vector<std::string> ids;
+        for (const auto& entry : doc["data"]) {
+            if (entry.is_object() && entry.contains("id") && entry["id"].is_string()) {
+                ids.push_back(entry["id"].get<std::string>());
+            }
+        }
+        std::sort(ids.begin(), ids.end());
+        return ids;
+    } catch (const nlohmann::json::exception& e) {
+        return mondoc::unexpected(
+            LlmError::badResponse(std::string{"models response: "} + e.what()));
+    }
+}
+
+mondoc::expected<std::vector<std::string>, LlmError>
+LlmClient::listModels(const std::atomic<bool>* cancelled) {
+    httplib::Client cli(host_);
+    cli.set_connection_timeout(std::chrono::seconds(10));
+    cli.set_read_timeout(std::chrono::seconds(30));
+    cli.set_write_timeout(std::chrono::seconds(10));
+
+    httplib::Headers headers = {
+        {"Authorization", "Bearer " + api_key_},
+    };
+
+    std::string responseBody;
+    bool tooLarge = false;
+    bool wasCancelled = false;
+    auto receiver = [&](const char* data, std::size_t len) {
+        if (cancelled != nullptr && cancelled->load()) {
+            wasCancelled = true;
+            return false;
+        }
+        responseBody.append(data, len);
+        if (responseBody.size() > kMaxResponseBytes) {
+            tooLarge = true;
+            return false;
+        }
+        return true;
+    };
+
+    auto res = cli.Get(path_prefix_ + "/models", headers, receiver);
+
+    if (wasCancelled) {
+        return mondoc::unexpected(LlmError::cancelled());
+    }
+    if (tooLarge) {
+        return mondoc::unexpected(LlmError::badResponse("response too large"));
+    }
+    if (!res) {
+        return mondoc::unexpected(
+            LlmError::unreachable(httplib::to_string(res.error())));
+    }
+    if (res->status >= 200 && res->status < 300) {
+        return parseModelsResponse(responseBody);
+    }
+    std::string trunc = responseBody.substr(
+        0, std::min<std::size_t>(256, responseBody.size()));
+    return mondoc::unexpected(classifyHttpStatus(res->status, std::move(trunc)));
 }
 
 }  // namespace mondoc::adapters::ai

@@ -1,6 +1,7 @@
 #pragma once
 #include <atomic>
 #include <string>
+#include <vector>
 #include "llm_error.hpp"
 #include "mondoc/expected.hpp"
 
@@ -16,6 +17,14 @@ public:
     // received so an in-flight request can be aborted mid-stream (SAI-2).
     virtual mondoc::expected<std::string, LlmError>
         chat(const std::string& body, const std::atomic<bool>* cancelled = nullptr) = 0;
+
+    // Lists model ids available at the hub (GET {prefix}/models). Default:
+    // not supported — override where the transport can actually ask.
+    virtual mondoc::expected<std::vector<std::string>, LlmError>
+        listModels(const std::atomic<bool>* cancelled = nullptr) {
+        (void)cancelled;
+        return mondoc::unexpected(LlmError::badResponse("model listing not supported"));
+    }
 };
 
 }  // namespace mondoc::adapters::ai
