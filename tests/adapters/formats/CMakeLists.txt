@@ -78,3 +78,8 @@ target_link_libraries(tests_adapters_formats_preview_provider
     PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain
             nlohmann_json::nlohmann_json)
 add_test(NAME formats.preview COMMAND tests_adapters_formats_preview_provider)
+
+add_executable(tests_adapters_formats_anchor test_preview_anchor.cpp)
+target_link_libraries(tests_adapters_formats_anchor
+    PRIVATE mondoc_adapters_formats tests_support Catch2::Catch2WithMain)
+add_test(NAME formats.anchor COMMAND tests_adapters_formats_anchor)

@@ -15,6 +15,7 @@ add_library(mondoc_adapters_formats STATIC
     plain_text_extractor.cpp
     format_registry.cpp
     preview_provider.cpp
+    preview_anchor.cpp
     detail/zip_util.cpp
     detail/placeholders.cpp
     detail/odt_text.cpp
