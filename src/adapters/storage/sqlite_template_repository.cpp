@@ -125,7 +125,8 @@ std::optional<mondoc::domain::FieldLocation> locationFromJson(const std::string&
             return mondoc::domain::FieldLocation{std::nullopt, textFromJson(j)};
         }
         if (type == "both") {
-            return mondoc::domain::FieldLocation{pdfFromJson(j["pdf"]), textFromJson(j["text"])};
+            return mondoc::domain::FieldLocation{pdfFromJson(j.value("pdf", nlohmann::json::object())),
+                                                  textFromJson(j.value("text", nlohmann::json::object()))};
         }
     } catch (...) {}
     return std::nullopt;

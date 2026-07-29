@@ -308,6 +308,38 @@ TEST_CASE("MondocBundle: co-resident pdf+text location round-trips through bundl
     REQUIRE(loc->text->char_end == 25);
 }
 
+TEST_CASE("MondocBundle: malformed 'both' location without pdf/text sub-keys parses safely "
+          "[adapters.formats.mondoc][visual-fill]") {
+    TempFile out{tempBundlePath("both_missing_subkeys")};
+    std::string manifest =
+        R"({"mondoc_version":1,"name":"x","source_format":"docx",)"
+        R"("source_filename":"x.docx","exported_at":"2026-01-01T00:00:00Z",)"
+        R"("fields":[{"name":"f1","type":"text","origin":"unknown",)"
+        R"("location":{"type":"both"}}]})";
+    {
+        int ec = 0;
+        auto u8 = out.path.u8string();
+        std::string nativePath(reinterpret_cast<const char*>(u8.data()), u8.size());
+        zip_t* za = zip_open(nativePath.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &ec);
+        REQUIRE(za != nullptr);
+        zip_source_t* src = zip_source_buffer(za, manifest.data(), manifest.size(), 0);
+        REQUIRE(src != nullptr);
+        REQUIRE(zip_file_add(za, "manifest.json", src, ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8) >= 0);
+        REQUIRE(zip_close(za) >= 0);
+    }
+
+    MondocBundleReader reader;
+    auto result = reader.read(out.path);
+    REQUIRE(result.has_value());
+    REQUIRE(result->fields_.size() == 1);
+    const auto& loc = result->fields_[0].location_;
+    REQUIRE(loc.has_value());
+    REQUIRE(loc->pdf.has_value());
+    REQUIRE(loc->text.has_value());
+    REQUIRE(loc->pdf->page_index == 0);
+    REQUIRE(loc->text->char_offset == 0);
+}
+
 TEST_CASE("MondocBundle: FieldOrigin::Ai round-trips through bundle [adapters.formats.mondoc]") {
     TempSourceFile src{"mondoc_ai_origin_source.txt"};
     Template tpl;

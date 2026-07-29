@@ -80,8 +80,8 @@ locationFromJson(const nlohmann::json& j) {
         return loc;
     }
     if (type == "both") {
-        loc.pdf = pdfFromJson(j["pdf"]);
-        loc.text = textFromJson(j["text"]);
+        loc.pdf = pdfFromJson(j.value("pdf", nlohmann::json::object()));
+        loc.text = textFromJson(j.value("text", nlohmann::json::object()));
         return loc;
     }
     return std::nullopt;
