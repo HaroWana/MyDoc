@@ -27,6 +27,10 @@ struct FrameEntry {
     PixelRect rect;
 };
 
+QPoint clampPoint(const QPoint& p, int maxW, int maxH) {
+    return QPoint(std::clamp(p.x(), 0, maxW), std::clamp(p.y(), 0, maxH));
+}
+
 PixelRect clampMove(const PixelRect& orig, int dx, int dy, int maxW, int maxH) {
     const int hiX = std::max(0, maxW - orig.w);
     const int hiY = std::max(0, maxH - orig.h);
@@ -174,7 +178,7 @@ protected:
 
         switch (mode_) {
             case Mode::Draw: {
-                const QRect r = QRect(drag_start_, pos).normalized();
+                const QRect r = QRect(drag_start_, clampPoint(pos, maxW, maxH)).normalized();
                 pending_draw_rect_ = PixelRect{r.x(), r.y(), r.width(), r.height()};
                 break;
             }
@@ -197,7 +201,10 @@ protected:
         mode_ = Mode::None;
 
         if (finishedMode == Mode::Draw) {
-            const PixelRect r = pending_draw_rect_;
+            const QRect qr = QRect(drag_start_,
+                                    clampPoint(e->pos(), image_.width(), image_.height()))
+                                 .normalized();
+            const PixelRect r{qr.x(), qr.y(), qr.width(), qr.height()};
             pending_draw_rect_ = PixelRect{};
             if (r.w > 4 && r.h > 4) emit frameDrawn(r);
         } else if (active_id_) {
